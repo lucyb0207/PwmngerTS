@@ -1,6 +1,12 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+/** @vitest-environment jsdom */
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import React from 'react';
 import { Input } from './Input';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('Input', () => {
   it('renders correctly with label and placeholder', () => {

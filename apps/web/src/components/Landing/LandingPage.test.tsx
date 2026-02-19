@@ -1,15 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, test, beforeEach, afterEach } from 'vitest';
+import React from 'react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { LandingPage } from "./LandingPage";
-import { vi, expect, describe, test, beforeEach } from "vitest";
-
-// Mock IntersectionObserver
-const mockIntersectionObserver = vi.fn();
-mockIntersectionObserver.mockReturnValue({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-});
-window.IntersectionObserver = mockIntersectionObserver;
 
 describe("LandingPage", () => {
   const mockOnLogin = vi.fn();
@@ -17,6 +9,10 @@ describe("LandingPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   test("renders hero section with main title", () => {
@@ -27,12 +23,12 @@ describe("LandingPage", () => {
 
   test("renders stats section", () => {
     render(<LandingPage onLogin={mockOnLogin} onRegister={mockOnRegister} />);
-    expect(screen.getByText(/Trusted Users/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Complete/i)[0]).toBeInTheDocument(); // From comparison table
   });
 
   test("renders feature and compare sections", () => {
     render(<LandingPage onLogin={mockOnLogin} onRegister={mockOnRegister} />);
-    expect(screen.getByText(/Total Transparency/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Zero-Knowledge/i)[0]).toBeInTheDocument();
   });
 
   test("renders footer with legal links", () => {

@@ -7,7 +7,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   // Mobile/API Support: Check Bearer token if cookie is missing
   if (!token && req.headers.authorization) {
     const parts = req.headers.authorization.split(" ");
-    if (parts.length === 2 && parts[0] === "Bearer") {
+    if (parts.length === 2 && parts[0]?.toLowerCase() === "bearer") {
       token = parts[1];
     }
   }

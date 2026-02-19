@@ -11,13 +11,14 @@ All encryption is intended to happen **locally on the user's device** — the se
 
 ---
 
-## ✨ Features (v1.2.0)
+## ✨ Features (v1.6.0)
 
 - 🔐 **Zero-Knowledge Design:** Built using client-side encryption (Web Crypto API).
 - 🎨 **Premium UI/UX:** Stunning high-performance landing page with dynamic mesh backgrounds and smooth transitions.
 - 🧩 **Chrome Extension:** Secure browser integration with robust error handling and cloud sync.
 - 📂 **Folder Organization:** Manage and categorize entries efficiently.
 - 🛡️ **Two-Factor Authentication (2FA):** Secure login with TOTP enforcement.
+- 🔑 **Hardware Security Keys:** FIDO2/WebAuthn support (e.g., YubiKey) for physical MFA.
 - 🆘 **Account Recovery:** Restore access via Emergency Recovery Kit if password is lost.
 - ⚡ **Performance Optimized:** Route-based lazy loading and optimized crypto operations.
 - ☁️ **Secure Sync:** Encrypted blob synchronization to self-hosted backend.
@@ -57,7 +58,11 @@ PwmngerTS/
 │  ├─ storage/      # Persistence Layer (IndexedDB/Chrome Storage)
 │  └─ ui/           # Shared Component Library
 │
-├─ backend/         # Node.js + Prisma API
+├─ apps/
+│  ├─ web/          # Modern React Web Vault
+│  ├─ extension/    # Browser Extension (Manifest V3)
+│  ├─ mobile/       # React Native App (In Progress)
+│  └─ backend/         # Node.js + Prisma API
 ```
 
 ---
@@ -82,8 +87,13 @@ PwmngerTS/
     ```
 
 3.  **Access**
-    - Web Vault: `http://localhost:5173`
+    - Web Vault: `http://127.0.0.1:3333`
     - API: `http://localhost:4000`
+
+---
+
+> [!TIP]
+> **Windows Users:** If you see an `EACCES` error when starting the web app, it's likely due to a port exclusion range (often caused by WSL/Hyper-V). We use port **3333** by default as it's generally outside these ranges. You can check your exclusions with `netsh int ipv4 show excludedportrange protocol=tcp`.
 
 ---
 
@@ -145,7 +155,8 @@ pnpm run test:e2e
 - [x] Vault Recovery Mechanism
 - [x] Premium Landing Page UI (v1.2.0)
 - [x] Extension Stability Fixes (v1.2.0)
-- [ ] Mobile app (Expo/React Native) - *Building core logic*
+- [x] Hardware Security Keys (YubiKey/WebAuthn)
+- [/] Mobile app (Expo/React Native) - *Storage layer & Core logic complete*
 - [ ] Auto-fill integration
 - [ ] Passkey support
 

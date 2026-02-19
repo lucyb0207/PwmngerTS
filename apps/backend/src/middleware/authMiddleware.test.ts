@@ -1,28 +1,39 @@
-import { requireAuth } from "./authMiddleware.js";
-import * as jwt from "jsonwebtoken";
+import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
+import { requireAuth } from "./authMiddleware";
+import { verify } from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 
 // Mock dependencies
-jest.mock("jsonwebtoken");
+vi.mock("jsonwebtoken", () => ({
+  verify: vi.fn(),
+  sign: vi.fn(),
+}));
 
 describe("Auth Middleware", () => {
   let mockReq: Partial<Request>;
   let mockRes: Partial<Response>;
-  let mockNext: jest.Mock;
-  let sendStatusMock: jest.Mock;
+  let mockNext: any;
+  let sendStatusMock: any;
+  let jsonMock: any;
+  let statusMock: any;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
-    mockNext = jest.fn();
-    sendStatusMock = jest.fn().mockReturnValue(undefined);
+    jsonMock = vi.fn().mockReturnValue(undefined);
+    statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    mockNext = vi.fn();
+    sendStatusMock = vi.fn().mockReturnValue(undefined);
 
     mockReq = {
       headers: {},
+      cookies: {},
     };
 
     mockRes = {
       sendStatus: sendStatusMock,
+      status: statusMock,
+      json: jsonMock,
     };
   });
 
@@ -32,7 +43,8 @@ describe("Auth Middleware", () => {
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(sendStatusMock).toHaveBeenCalledWith(401);
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({ error: "Access denied" });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -41,7 +53,8 @@ describe("Auth Middleware", () => {
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(sendStatusMock).toHaveBeenCalledWith(401);
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({ error: "Access denied" });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -51,13 +64,13 @@ describe("Auth Middleware", () => {
 
       mockReq.headers = { authorization: `Bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockReturnValue(payload);
+      vi.mocked(verify).mockReturnValue(payload as any);
 
       process.env.JWT_SECRET = "test_secret";
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(jwt.verify).toHaveBeenCalledWith(token, "test_secret");
+      expect(verify).toHaveBeenCalledWith(token, "test_secret");
       expect(mockNext).toHaveBeenCalled();
     });
 
@@ -67,7 +80,7 @@ describe("Auth Middleware", () => {
 
       mockReq.headers = { authorization: `Bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockReturnValue(payload);
+      vi.mocked(verify).mockReturnValue(payload as any);
 
       process.env.JWT_SECRET = "test_secret";
 
@@ -81,7 +94,7 @@ describe("Auth Middleware", () => {
 
       mockReq.headers = { authorization: `Bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockImplementation(() => {
+      vi.mocked(verify).mockImplementation(() => {
         throw new Error("Invalid token");
       });
 
@@ -89,7 +102,8 @@ describe("Auth Middleware", () => {
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(sendStatusMock).toHaveBeenCalledWith(401);
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({ error: "Invalid token" });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -100,7 +114,7 @@ describe("Auth Middleware", () => {
 
       const error = new Error("Token expired");
       (error as any).name = "TokenExpiredError";
-      (jwt.verify as jest.Mock).mockImplementation(() => {
+      vi.mocked(verify).mockImplementation(() => {
         throw error;
       });
 
@@ -108,7 +122,8 @@ describe("Auth Middleware", () => {
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(sendStatusMock).toHaveBeenCalledWith(401);
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({ error: "Invalid token" });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -119,13 +134,13 @@ describe("Auth Middleware", () => {
       // The code splits by " " and takes [1], so "Bearer token" -> ["Bearer", "token"]
       mockReq.headers = { authorization: `Bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockReturnValue(payload);
+      vi.mocked(verify).mockReturnValue(payload as any);
 
       process.env.JWT_SECRET = "test_secret";
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(jwt.verify).toHaveBeenCalledWith(token, "test_secret");
+      expect(verify).toHaveBeenCalledWith(token, "test_secret");
     });
 
     it("should use JWT_SECRET from environment", () => {
@@ -135,13 +150,13 @@ describe("Auth Middleware", () => {
 
       mockReq.headers = { authorization: `Bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockReturnValue(payload);
+      vi.mocked(verify).mockReturnValue(payload as any);
 
       process.env.JWT_SECRET = secret;
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
-      expect(jwt.verify).toHaveBeenCalledWith(token, secret);
+      expect(verify).toHaveBeenCalledWith(token, secret);
     });
 
     it("should handle case-insensitive Bearer prefix", () => {
@@ -151,14 +166,14 @@ describe("Auth Middleware", () => {
       // Note: the current implementation doesn't handle this, but good to test
       mockReq.headers = { authorization: `bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockReturnValue(payload);
+      vi.mocked(verify).mockReturnValue(payload as any);
 
       process.env.JWT_SECRET = "test_secret";
 
       requireAuth(mockReq as any, mockRes as any, mockNext);
 
       // The split will result in ["bearer", token], so it should work
-      expect(jwt.verify).toHaveBeenCalled();
+      expect(verify).toHaveBeenCalled();
     });
 
     it("should continue to next middleware after successful verification", () => {
@@ -167,7 +182,7 @@ describe("Auth Middleware", () => {
 
       mockReq.headers = { authorization: `Bearer ${token}` };
 
-      (jwt.verify as jest.Mock).mockReturnValue(payload);
+      vi.mocked(verify).mockReturnValue(payload as any);
 
       process.env.JWT_SECRET = "test_secret";
 

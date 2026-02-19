@@ -62,6 +62,17 @@ All vault data is encrypted on the client side using **AES-256-GCM** (Galois/Cou
 
 We sync "Encrypted Blobs" to our backend. Even if our database were fully compromised, the attacker would only see opaque, encrypted data that is mathematically impossible to crack without the locally-derived Master Key.
 
+## 🔑 Hardware Security Keys (WebAuthn)
+
+PwmngerTS supports FIDO2/WebAuthn hardware keys (e.g., YubiKey) for multi-factor authentication.
+
+### Flow:
+1. **Registration**: Client requests options -> Server generates challenge -> Hardware key signs -> Server verifies and stores public key.
+2. **Authentication**: Server sends challenge -> Hardware key signs with private key -> Server verifies signature against stored public key.
+
+> [!NOTE]
+> This provides hardware-level protection against phishing and credential theft, ensuring that even if your Master Password is compromised, your vault remains secure.
+
 ## 🚀 Technological Stack
 
 - **Frontend:** React 19, Vite, Vanilla CSS.

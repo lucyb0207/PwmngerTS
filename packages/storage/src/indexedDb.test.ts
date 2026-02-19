@@ -1,3 +1,4 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { saveVault, loadVault, __resetDB } from "./indexedDb";
 
 const DB_NAME = "pwmnger-db";
@@ -27,32 +28,32 @@ describe("IndexedDB Storage", () => {
     __resetDB();
 
     // Clear any previous mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Setup mock store
     const mockGetRequest = { result: null, onsuccess: null, onerror: null };
     const mockPutRequest = { onsuccess: null, onerror: null };
     mockStore = {
-      get: jest.fn(() => mockGetRequest),
-      put: jest.fn(() => mockPutRequest),
+      get: vi.fn(() => mockGetRequest),
+      put: vi.fn(() => mockPutRequest),
     };
     (global as any).mockGetRequest = mockGetRequest;
     (global as any).mockPutRequest = mockPutRequest;
 
     // Setup mock transaction
     mockTransaction = {
-      objectStore: jest.fn(() => mockStore),
+      objectStore: vi.fn(() => mockStore),
       oncomplete: null,
       onerror: null,
     };
 
     // Setup mock database
     mockDB = {
-      transaction: jest.fn(() => mockTransaction),
+      transaction: vi.fn(() => mockTransaction),
       objectStoreNames: {
-        contains: jest.fn(() => true),
+        contains: vi.fn(() => true),
       },
-      createObjectStore: jest.fn(),
+      createObjectStore: vi.fn(),
     };
 
     // Setup global indexedDB mock
@@ -64,7 +65,7 @@ describe("IndexedDB Storage", () => {
       error: null,
     };
     (global as any).indexedDB = {
-      open: jest.fn((name, version) => mockRequest),
+      open: vi.fn((name, version) => mockRequest),
     };
     (global as any).mockRequest = mockRequest;
   });
@@ -229,7 +230,7 @@ describe("IndexedDB Storage", () => {
 
   describe("Database initialization", () => {
     it("should create object store on first use if not exists", async () => {
-      mockDB.objectStoreNames.contains = jest.fn(() => false);
+      mockDB.objectStoreNames.contains = vi.fn(() => false);
 
       const openRequest = (global as any).mockRequest;
 

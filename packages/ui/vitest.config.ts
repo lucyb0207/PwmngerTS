@@ -1,13 +1,20 @@
-/// <reference types="vitest" />
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import tsconfigPaths from 'vite-tsconfig-paths';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tsconfigPaths()],
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/test-setup.ts',
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    css: true,
+    setupFiles: [path.resolve(__dirname, 'src/test-setup.ts')],
+    alias: {
+      '@pwmnger/ui': path.resolve(__dirname, 'src'),
+    },
   },
 });

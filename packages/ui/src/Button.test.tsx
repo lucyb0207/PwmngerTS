@@ -1,6 +1,12 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+/** @vitest-environment jsdom */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
 import { Button } from './Button';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('Button', () => {
   it('renders correctly with children', () => {

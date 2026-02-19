@@ -1,8 +1,5 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
@@ -14,5 +11,7 @@ export default defineConfig({
       '@pwmnger/storage': path.resolve(__dirname, '../../packages/storage/src'),
       '@pwmnger/app-logic': path.resolve(__dirname, '../../packages/appLogic/src'),
     },
+    include: ['src/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
   },
 });

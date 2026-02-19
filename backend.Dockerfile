@@ -8,7 +8,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy workspace config
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY backend/package.json ./backend/
+COPY apps/backend/package.json ./apps/backend/
 
 # Copy workspace packages
 COPY packages/ ./packages/
@@ -17,12 +17,12 @@ COPY packages/ ./packages/
 RUN pnpm install
 
 # Copy source
-COPY backend/tsconfig.json ./backend/
-COPY backend/src ./backend/src
-COPY backend/prisma ./backend/prisma
+COPY apps/backend/tsconfig.json ./apps/backend/
+COPY apps/backend/src ./apps/backend/src
+COPY apps/backend/prisma ./apps/backend/prisma
 
 # Generate Prisma Client
-WORKDIR /app/backend
+WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
 # Build Backend
@@ -33,9 +33,9 @@ FROM node:23-alpine AS runner
 
 WORKDIR /app
 
-COPY --from=builder /app/backend/dist ./dist
-COPY --from=builder /app/backend/package.json ./package.json
-COPY --from=builder /app/backend/prisma ./prisma
+COPY --from=builder /app/apps/backend/dist ./dist
+COPY --from=builder /app/apps/backend/package.json ./package.json
+COPY --from=builder /app/apps/backend/prisma ./prisma
 COPY --from=builder /app/node_modules ./node_modules
 
 # Environment variables (Defaults)

@@ -1,5 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AddEntryForm } from './AddEntryForm';
 
 // Mock the UI components if they are not rendered correctly in JSDOM
@@ -22,6 +23,6 @@ describe('AddEntryForm', () => {
     
     fireEvent.click(screen.getByRole('button', { name: /add/i }));
     
-    expect(onAdd).toHaveBeenCalledWith('google.com', 'user@test.com', 'secure123');
+    expect(onAdd).toHaveBeenCalledWith('google.com', 'user@test.com', 'secure123', undefined);
   });
 });

@@ -120,7 +120,7 @@ To sync your browser extension or mobile app with your new hosting:
 ---
 
 ## 🛠️ Troubleshooting & Support
-- **CORS Errors**: Ensure your Render backend allows requests from your Vercel domain (Check `backend/.env` or source code).
+- **CORS Errors**: Ensure your Render backend allows requests from your Vercel domain (Check `apps/backend/.env` or source code).
 - **Prisma Failures**: If the build fails on Render, double-check that your `DATABASE_URL` is correct and accessible.
 - **Spin-down**: If the app feels stuck on "Logging in", it's likely the Render backend is waking up from sleep.
 

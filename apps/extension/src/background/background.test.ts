@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
   runtime: {
     onInstalled: { addListener: vi.fn() },
     onMessage: { addListener: vi.fn() },
+    onMessageExternal: { addListener: vi.fn() },
     sendMessage: vi.fn(),
   },
   action: {

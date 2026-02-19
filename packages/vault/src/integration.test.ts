@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeAll, beforeEach, vi } from "vitest";
 import { encryptData } from "../../crypto/src/encrypt";
 import { decryptData } from "../../crypto/src/decrypt";
 import { deriveMasterKey } from "../../crypto/src/kdf";
@@ -9,12 +10,14 @@ describe("Integration Tests (Crypto + Vault)", () => {
   let masterKey: CryptoKey;
   let vault: Vault;
   const password = "MasterPassword123!";
-  let salt: Uint8Array;
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
 
   beforeAll(async () => {
-    salt = randomBytes(16);
+    // Increase timeout for argon2 operations
+    vi.setConfig({ testTimeout: 30000 });
     masterKey = await deriveMasterKey(password, salt);
-  });
+  }, 30000);
 
   beforeEach(() => {
     vault = createEmptyVault();
@@ -101,9 +104,9 @@ describe("Integration Tests (Crypto + Vault)", () => {
     const folders = decrypted.folders;
     expect(folders).toBeDefined();
     if (folders && folders.length > 0) {
-      expect(folders[0].name).toBe("Finance");
+      expect(folders[0]!.name).toBe("Finance");
     }
-    expect(decrypted.entries[0].folderId).toBe(folderId);
+    expect(decrypted.entries[0]!.folderId).toBe(folderId);
     expect(decrypted.updatedAt).toBe(vault.updatedAt);
 
     // 4. Test "Movement" (Simulated)

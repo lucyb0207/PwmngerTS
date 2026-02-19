@@ -1,9 +1,17 @@
-import { uploadVault, downloadVault } from "./vaultController.js";
-import { prisma } from "../db/prisma.js";
+import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
+import { uploadVault, downloadVault } from "./vaultController";
+import { prisma } from "../db/prisma";
 import type { Request, Response } from "express";
 
 // Mock dependencies
-jest.mock("../db/prisma.js");
+vi.mock("../db/prisma", () => ({
+  prisma: {
+    vault: {
+      upsert: vi.fn(),
+      findUnique: vi.fn(),
+    },
+  },
+}));
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -12,14 +20,16 @@ interface AuthRequest extends Request {
 describe("Vault Controller", () => {
   let mockReq: Partial<AuthRequest>;
   let mockRes: Partial<Response>;
-  let jsonMock: jest.Mock;
-  let nextMock: jest.Mock;
+  let jsonMock: any;
+  let statusMock: any;
+  let nextMock: any;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
-    jsonMock = jest.fn().mockReturnValue(undefined);
-    nextMock = jest.fn();
+    jsonMock = vi.fn().mockReturnValue(undefined);
+    statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    nextMock = vi.fn();
 
     mockReq = {
       body: {},
@@ -28,59 +38,60 @@ describe("Vault Controller", () => {
 
     mockRes = {
       json: jsonMock,
+      status: statusMock,
     };
   });
 
   describe("uploadVault", () => {
     it("should create a new vault if it doesn't exist", async () => {
-      const encryptedVault = { iv: [1, 2, 3], data: [4, 5, 6] };
-      mockReq.body = { encryptedVault };
+      const vaultPayload = { iv: [1, 2, 3], data: [4, 5, 6] };
+      mockReq.body = { vaultPayload };
 
-      (prisma.vault.upsert as jest.Mock).mockResolvedValue({
+      vi.mocked(prisma.vault.upsert).mockResolvedValue({
         id: "vault-123",
-        encrypted: JSON.stringify(encryptedVault),
+        encrypted: JSON.stringify(vaultPayload),
         userId: "user-123",
         updatedAt: new Date(),
-      });
+      } as any);
 
       await uploadVault(mockReq as any, mockRes as any, nextMock);
 
       expect(prisma.vault.upsert).toHaveBeenCalledWith({
         where: { userId: "user-123" },
-        update: { encrypted: encryptedVault },
-        create: { encrypted: encryptedVault, userId: "user-123" },
+        update: { encrypted: JSON.stringify(vaultPayload) },
+        create: { encrypted: JSON.stringify(vaultPayload), userId: "user-123" },
       });
       expect(jsonMock).toHaveBeenCalledWith({ success: true });
     });
 
     it("should update existing vault", async () => {
-      const encryptedVault = { iv: [1, 2, 3], data: [4, 5, 6] };
-      const newEncryptedVault = { iv: [7, 8, 9], data: [10, 11, 12] };
+      const vaultPayload = { iv: [1, 2, 3], data: [4, 5, 6] };
+      const newVaultPayload = { iv: [7, 8, 9], data: [10, 11, 12] };
 
-      mockReq.body = { encryptedVault: newEncryptedVault };
+      mockReq.body = { vaultPayload: newVaultPayload };
 
-      (prisma.vault.upsert as jest.Mock).mockResolvedValue({
+      vi.mocked(prisma.vault.upsert).mockResolvedValue({
         id: "vault-123",
-        encrypted: JSON.stringify(newEncryptedVault),
+        encrypted: JSON.stringify(newVaultPayload),
         userId: "user-123",
         updatedAt: new Date(),
-      });
+      } as any);
 
       await uploadVault(mockReq as any, mockRes as any, nextMock);
 
       expect(prisma.vault.upsert).toHaveBeenCalledWith({
         where: { userId: "user-123" },
-        update: { encrypted: newEncryptedVault },
-        create: { encrypted: newEncryptedVault, userId: "user-123" },
+        update: { encrypted: JSON.stringify(newVaultPayload) },
+        create: { encrypted: JSON.stringify(newVaultPayload), userId: "user-123" },
       });
       expect(jsonMock).toHaveBeenCalledWith({ success: true });
     });
 
     it("should handle database errors", async () => {
-      const encryptedVault = { iv: [1, 2, 3], data: [4, 5, 6] };
-      mockReq.body = { encryptedVault };
+      const vaultPayload = { iv: [1, 2, 3], data: [4, 5, 6] };
+      mockReq.body = { vaultPayload };
 
-      (prisma.vault.upsert as jest.Mock).mockRejectedValue(
+      vi.mocked(prisma.vault.upsert).mockRejectedValue(
         new Error("Database error"),
       );
 
@@ -90,20 +101,22 @@ describe("Vault Controller", () => {
     });
 
     it("should use correct userId from request", async () => {
-      const encryptedVault = { iv: [1, 2, 3], data: [4, 5, 6] };
-      mockReq.body = { encryptedVault };
+      const vaultPayload = { iv: [1, 2, 3], data: [4, 5, 6] };
+      mockReq.body = { vaultPayload };
       mockReq.user = { userId: "user-456" };
 
-      (prisma.vault.upsert as jest.Mock).mockResolvedValue({
+      vi.mocked(prisma.vault.upsert).mockResolvedValue({
         id: "vault-456",
-        encrypted: JSON.stringify(encryptedVault),
+        encrypted: JSON.stringify(vaultPayload),
         userId: "user-456",
         updatedAt: new Date(),
-      });
+      } as any);
 
       await uploadVault(mockReq as any, mockRes as any, nextMock);
 
-      const call = (prisma.vault.upsert as jest.Mock).mock.calls[0][0];
+      const upsertCall = vi.mocked(prisma.vault.upsert).mock.calls[0];
+      if (!upsertCall) throw new Error("upsert was not called");
+      const call = upsertCall[0];
       expect(call.where.userId).toBe("user-456");
       expect(call.create.userId).toBe("user-456");
     });
@@ -113,12 +126,12 @@ describe("Vault Controller", () => {
     it("should return encrypted vault if exists", async () => {
       const encryptedVault = { iv: [1, 2, 3], data: [4, 5, 6] };
 
-      (prisma.vault.findUnique as jest.Mock).mockResolvedValue({
+      vi.mocked(prisma.vault.findUnique).mockResolvedValue({
         id: "vault-123",
-        encrypted: JSON.stringify(encryptedVault),
+        encrypted: encryptedVault,
         userId: "user-123",
         updatedAt: new Date(),
-      });
+      } as any);
 
       await downloadVault(mockReq as any, mockRes as any, nextMock);
 
@@ -126,22 +139,22 @@ describe("Vault Controller", () => {
         where: { userId: "user-123" },
       });
       expect(jsonMock).toHaveBeenCalledWith({
-        encryptedVault: JSON.stringify(encryptedVault),
+        vaultPayload: encryptedVault,
       });
     });
 
     it("should return null if vault doesn't exist", async () => {
-      (prisma.vault.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.vault.findUnique as Mock).mockResolvedValue(null);
 
       await downloadVault(mockReq as any, mockRes as any, nextMock);
 
-      expect(jsonMock).toHaveBeenCalledWith({ encryptedVault: null });
+      expect(jsonMock).toHaveBeenCalledWith({ vaultPayload: null });
     });
 
     it("should query with correct userId", async () => {
       mockReq.user = { userId: "user-789" };
 
-      (prisma.vault.findUnique as jest.Mock).mockResolvedValue(null);
+      vi.mocked(prisma.vault.findUnique).mockResolvedValue(null);
 
       await downloadVault(mockReq as any, mockRes as any, nextMock);
 
@@ -151,29 +164,28 @@ describe("Vault Controller", () => {
     });
 
     it("should handle database errors", async () => {
-      (prisma.vault.findUnique as jest.Mock).mockRejectedValue(
-        new Error("Database error"),
-      );
+      const error = new Error("Database error");
+      vi.mocked(prisma.vault.findUnique).mockRejectedValue(error);
 
-      await expect(
-        downloadVault(mockReq as any, mockRes as any, nextMock),
-      ).rejects.toThrow("Database error");
+      await downloadVault(mockReq as any, mockRes as any, nextMock);
+
+      expect(nextMock).toHaveBeenCalledWith(error);
     });
 
     it("should return vault with correct structure", async () => {
       const encryptedVault = { iv: [7, 8, 9], data: [10, 11, 12] };
 
-      (prisma.vault.findUnique as jest.Mock).mockResolvedValue({
+      vi.mocked(prisma.vault.findUnique).mockResolvedValue({
         id: "vault-123",
         encrypted: encryptedVault,
         userId: "user-123",
         updatedAt: new Date("2026-01-29T10:00:00Z"),
-      });
+      } as any);
 
       await downloadVault(mockReq as any, mockRes as any, nextMock);
 
       expect(jsonMock).toHaveBeenCalledWith({
-        encryptedVault: encryptedVault,
+        vaultPayload: encryptedVault,
       });
     });
   });

@@ -72,11 +72,11 @@ export function useVault() {
     setVault(null);
   };
 
-  const sync = async (token: string) => {
+  const sync = async () => {
     setIsSyncing(true);
     setError("");
     try {
-      await syncVaultWithCloud(token);
+      await syncVaultWithCloud();
       updateVaultState();
     } catch (err: any) {
       setError(err.message || "Sync failed");

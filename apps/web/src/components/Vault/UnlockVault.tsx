@@ -79,12 +79,15 @@ export const UnlockVault: React.FC<UnlockVaultProps> = ({
           <div style={{ display: "flex", gap: 12, padding: "12px", background: "rgba(62, 207, 142, 0.05)", border: "1px solid rgba(62, 207, 142, 0.1)", borderRadius: "var(--radius-md)", marginBottom: 24 }}>
              <FileJson size={16} style={{ color: "var(--accent-green)", flexShrink: 0 }} />
              <p style={{ margin: 0, fontSize: "12px", color: "var(--accent-green)", lineHeight: 1.4 }}>
-               Upload your <code>recovery_kit.json</code> to regain access.
+               <label htmlFor="recovery-kit-upload" style={{ cursor: "pointer" }}>
+                 Upload your <code>recovery_kit.json</code> to regain access.
+               </label>
              </p>
           </div>
 
           <div style={{ position: "relative" }}>
              <input 
+               id="recovery-kit-upload"
                type="file" 
                accept=".json"
                onChange={(e) => {

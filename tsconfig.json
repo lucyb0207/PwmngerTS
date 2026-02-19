@@ -7,9 +7,10 @@
 
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
-    "module": "commonjs",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "target": "es2020",
-    "types": ["jest"],
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
