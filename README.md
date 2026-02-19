@@ -108,7 +108,7 @@ PwmngerTS is designed to be easily self-hosted using modern cloud providers with
 | **Database** | [Supabase](https://supabase.com) | Create project -> Copy Connection String -> Add to Backend `.env`. |
 
 > [!TIP]
-> **See the full [DEPLOYMENT.md](file:///c:/Users/HP/desktop/pwmngerTS/DEPLOYMENT.md) for step-by-step setup and environment variables checklist.**
+> **See the full [DEPLOYMENT.md](file:///c:/Users/HP/desktop/pwmngerTS/docs/DEPLOYMENT.md) for step-by-step setup and environment variables checklist.**
 
 ---
 
@@ -143,6 +143,7 @@ pnpm run test:e2e
 
 - ✅ **Unit Tests**: Coverage for `@pwmnger/crypto`, `@pwmnger/vault`, and core logic.
 - ✅ **Extension Tests**: UI and interaction testing for the browser extension.
+- ✅ **Security Audits**: Internal audits archived in [docs/audits/](file:///c:/Users/HP/desktop/pwmngerTS/docs/audits/).
 - ✅ **E2E Tests**: Integration testing using Playwright.
 
 ---

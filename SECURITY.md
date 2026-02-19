@@ -59,6 +59,13 @@ Understanding what PwmngerTS protects against helps you evaluate its security fo
 
 ---
 
+## 🔍 Security Audits
+
+We periodically perform internal security audits. You can find our latest reports here:
+- **[2026-02-19 Internal Audit](file:///c:/Users/HP/desktop/pwmngerTS/docs/audits/2026-02-19-internal.md)** - Result: **A-**
+
+---
+
 ## ⚠️ Disclaimer
 
 This project is provided **as-is** for educational and experimental purposes.

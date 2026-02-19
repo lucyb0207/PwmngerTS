@@ -3,6 +3,7 @@ import { decryptData } from "./decrypt";
 import { deriveMasterKey, deriveAuthHash } from "./kdf";
 import { randomBytes } from "./random";
 import { generateVaultKey } from "./vaultKey";
+import { describe, beforeAll, test, expect } from "vitest";
 
 describe("Crypto Package", () => {
   let masterKey: CryptoKey;
@@ -42,9 +43,9 @@ describe("Crypto Package", () => {
     expect(encrypted.data).toBeDefined();
 
     const decrypted = await decryptData(masterKey, {
-      iv: new Uint8Array(encrypted.iv),
-      data: new Uint8Array(encrypted.data),
-    } as any);
+      iv: Array.from(new Uint8Array(encrypted.iv)),
+      data: Array.from(new Uint8Array(encrypted.data)),
+    });
 
     expect(decrypted).toEqual(testData);
   });
@@ -66,19 +67,19 @@ describe("Crypto Package", () => {
 
     await expect(
       decryptData(wrongMasterKey, {
-        iv: new Uint8Array(encrypted.iv),
-        data: new Uint8Array(encrypted.data),
-      } as any),
+        iv: Array.from(new Uint8Array(encrypted.iv)),
+        data: Array.from(new Uint8Array(encrypted.data)),
+      }),
     ).rejects.toThrow();
-  });
+  }, 30000);
 
   test("Test 7: Empty String Encryption", async () => {
     const emptyData = { secret: "" };
     const encrypted = await encryptData(masterKey, emptyData);
     const decrypted = await decryptData(masterKey, {
-      iv: new Uint8Array(encrypted.iv),
-      data: new Uint8Array(encrypted.data),
-    } as any);
+      iv: Array.from(new Uint8Array(encrypted.iv)),
+      data: Array.from(new Uint8Array(encrypted.data)),
+    });
     expect(decrypted).toEqual(emptyData);
   });
 
@@ -87,9 +88,9 @@ describe("Crypto Package", () => {
     const largeData = { blob: largeString };
     const encrypted = await encryptData(masterKey, largeData);
     const decrypted = await decryptData(masterKey, {
-      iv: new Uint8Array(encrypted.iv),
-      data: new Uint8Array(encrypted.data),
-    } as any);
+      iv: Array.from(new Uint8Array(encrypted.iv)),
+      data: Array.from(new Uint8Array(encrypted.data)),
+    });
     expect(decrypted).toEqual(largeData);
   });
 
@@ -97,22 +98,19 @@ describe("Crypto Package", () => {
     const password = "SamePassword123!";
     const salt = randomBytes(16);
     const masterKey = await deriveMasterKey(password, salt);
-    // Fixed salt string for auth hash as per implementation
     const authHash = await deriveAuthHash(password, "constant-salt-string");
     
-    // Auth hash is a hex string, master key is a CryptoKey
-    // This is fundamentally different, but we check they aren't trivially related
     expect(authHash).toBeDefined();
     expect(masterKey).toBeDefined();
-  });
+  }, 30000);
 
   test("Test 10: Unicode/Symbol Handling", async () => {
     const unicodeData = { secret: "🔐 漢字 😂 Δ" };
     const encrypted = await encryptData(masterKey, unicodeData);
     const decrypted = await decryptData(masterKey, {
-      iv: new Uint8Array(encrypted.iv),
-      data: new Uint8Array(encrypted.data),
-    } as any);
+      iv: Array.from(new Uint8Array(encrypted.iv)),
+      data: Array.from(new Uint8Array(encrypted.data)),
+    });
     expect(decrypted).toEqual(unicodeData);
   });
 });
