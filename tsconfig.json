@@ -45,7 +45,8 @@
       "@pwmnger/vault": ["./packages/vault/src"],
       "@pwmnger/storage": ["./packages/storage/src"],
       "@pwmnger/app-logic": ["./packages/appLogic/src"],
-      "@pwmnger/ui": ["./packages/ui/src"]
+      "@pwmnger/ui": ["./packages/ui/src"],
+      "@pwmnger/errors": ["./packages/errors/src"]
     }
   }
 }

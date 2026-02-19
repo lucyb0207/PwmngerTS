@@ -12,10 +12,23 @@ import { errorHandler } from "./middleware/errorHandler";
 import cookieParser from "cookie-parser";
 
 import session from "express-session";
+import connectPg from "connect-pg-simple";
+import { Pool } from "pg";
+
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+const PostgresStore = connectPg(session);
 
 const app: express.Application = express();
 
 app.use(session({
+  store: new PostgresStore({
+    pool: pgPool,
+    tableName: "session",
+    createTableIfMissing: true,
+  }),
   secret: process.env.SESSION_SECRET || "pwmnger-secret-session",
   resave: false,
   saveUninitialized: false,
@@ -23,7 +36,7 @@ app.use(session({
     secure: process.env.NODE_ENV === "production", 
     httpOnly: true, 
     sameSite: "lax", 
-    maxAge: 60 * 60 * 1000 // 1 hour 
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 }));
 

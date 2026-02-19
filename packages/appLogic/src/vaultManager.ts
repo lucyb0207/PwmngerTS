@@ -10,6 +10,7 @@ import {
 } from "@pwmnger/crypto";
 import { createEmptyVault } from "@pwmnger/vault";
 import { saveVault, loadVault, clearVault } from "@pwmnger/storage";
+import { VaultError } from "@pwmnger/errors";
 
 import type { Vault, VaultEntry, Folder } from "@pwmnger/vault";
 
@@ -22,7 +23,7 @@ export function isUnlocked(): boolean {
 }
 
 export function getVault(): Vault {
-  if (!unlockedVault) throw new Error("Vault is locked");
+  if (!unlockedVault) throw new VaultError("Vault is locked", 403);
   // Sanitize on access to ensure UI doesn't crash on legacy or corrupted data
   return sanitizeVault(unlockedVault);
 }
@@ -150,7 +151,7 @@ export async function unlockVault(masterPassword: string) {
   const stored = await loadVault();
   if (!stored) {
     console.warn("unlockVault: No vault found in storage");
-    throw new Error("No vault found (Not initialized)");
+    throw new VaultError("No vault found (Not initialized)", 404);
   }
 
   const salt = new Uint8Array(stored.salt);
@@ -181,7 +182,7 @@ export async function unlockVault(masterPassword: string) {
 
 export async function saveCurrentVault() {
   if (!vaultKey || !unlockedVault) {
-    throw new Error("Vault is not unlocked (missing keys or vault data)");
+    throw new VaultError("Vault is not unlocked (missing keys or vault data)", 403);
   }
 
   try {
@@ -190,7 +191,7 @@ export async function saveCurrentVault() {
 
     const stored = await loadVault();
     if (!stored) {
-      throw new Error("Cannot save: No vault to update");
+      throw new VaultError("Cannot save: No vault to update", 404);
     }
 
     await saveVault({
@@ -252,7 +253,7 @@ export async function updateVaultEntry(
 ) {
   const vault = getVault();
   const entry = vault.entries.find((e) => e.id === id);
-  if (!entry) throw new Error("Entry not found");
+  if (!entry) throw new VaultError("Entry not found", 404);
 
   Object.assign(entry, updates);
   entry.lastModified = Date.now();

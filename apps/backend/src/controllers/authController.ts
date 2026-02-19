@@ -3,7 +3,7 @@ import * as jwt from "jsonwebtoken";
 import { prisma } from "../db/prisma";
 import type { Request, Response, NextFunction } from "express";
 import logger from "../utils/logger";
-import { AppError } from "../utils/errors";
+import { AuthError } from "@pwmnger/errors";
 import crypto from "crypto";
 
 export async function register(req: Request, res: Response, next: NextFunction) {
@@ -51,7 +51,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
     });
   } catch (err: any) {
     if (err.code === "P2002") {
-      return next(new AppError("An account with this email already exists", 409));
+      return next(new AuthError("An account with this email already exists", 409));
     }
     next(err);
   }
@@ -64,10 +64,10 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     const { email, authHash, twoFactorToken } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return next(new AppError("Invalid login", 401));
+    if (!user) return next(new AuthError("Invalid login", 401));
 
     const ok = await argon2.verify(user.passwordHash, authHash);
-    if (!ok) return next(new AppError("Invalid login", 401));
+    if (!ok) return next(new AuthError("Invalid login", 401));
 
     if (user.twoFactorSecret) {
       if (!twoFactorToken) {
@@ -76,7 +76,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
       const valid2FA = await verify2FALogin(user.id, twoFactorToken);
       if (!valid2FA) {
-        return next(new AppError("Invalid 2FA Token", 401));
+        return next(new AuthError("Invalid 2FA Token", 401));
       }
     }
 
@@ -120,7 +120,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   const refreshToken = req.cookies.refreshToken;
-  if (!refreshToken) return next(new AppError("Refresh token required", 400));
+  if (!refreshToken) return next(new AuthError("Refresh token required", 400));
 
   try {
     const tokenData = await prisma.refreshToken.findUnique({
@@ -132,7 +132,7 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
       if (tokenData) {
         await prisma.refreshToken.delete({ where: { id: tokenData.id } });
       }
-      return next(new AppError("Invalid or expired refresh token", 401));
+      return next(new AuthError("Invalid or expired refresh token", 401));
     }
 
     const accessToken = jwt.sign(
@@ -187,11 +187,11 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
 
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return next(new AppError("User not found", 404));
+    if (!user) return next(new AuthError("User not found", 404));
 
     // 1. Verify old password
     const ok = await argon2.verify(user.passwordHash, oldAuthHash);
-    if (!ok) return next(new AppError("Invalid current password", 401));
+    if (!ok) return next(new AuthError("Invalid current password", 401));
 
     // 2. Hash and update new password
     const serverHash = await argon2.hash(newAuthHash);

@@ -1,6 +1,6 @@
 import { prisma } from "../db/prisma";
 import type { Request, Response, NextFunction } from "express";
-import { AppError } from "../utils/errors";
+import { ConflictError } from "@pwmnger/errors";
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -28,7 +28,7 @@ export async function uploadVault(req: AuthRequest, res: Response, next: NextFun
     const clientUpdatedAt = vaultPayload.updatedAt || 0;
 
     if (cloudUpdatedAt > clientUpdatedAt) {
-      return next(new AppError("CONFLICT: Cloud version is newer than client version", 409));
+      return next(new ConflictError("Cloud version is newer than client version"));
     }
   }
 
