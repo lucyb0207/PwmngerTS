@@ -3,6 +3,10 @@ const STORE_NAME = "vault";
 const DB_VERSION = 2;
 
 import type { EncryptedPayload } from "@pwmnger/crypto";
+import {
+  getMemoryAuthToken,
+  setMemoryAuthToken,
+} from "./memoryAuthToken";
 
 type StoredVault = {
   salt: number[];
@@ -120,26 +124,11 @@ export async function loadVault(): Promise<StoredVault | null> {
 }
 
 export async function saveAuthToken(token: string): Promise<void> {
-  if (typeof _chrome !== "undefined" && _chrome.storage && _chrome.storage.local) {
-    return new Promise((resolve, reject) => {
-      _chrome.storage.local.set({ pwmnger_token: token }, () => {
-        if (_chrome.runtime.lastError) reject(_chrome.runtime.lastError);
-        else resolve();
-      });
-    });
-  }
-  localStorage.setItem("pwmnger_token", token);
+  setMemoryAuthToken(token);
 }
 
 export async function loadAuthToken(): Promise<string | null> {
-  if (typeof _chrome !== "undefined" && _chrome.storage && _chrome.storage.local) {
-    return new Promise((resolve) => {
-      _chrome.storage.local.get("pwmnger_token", (result: any) => {
-        resolve(result.pwmnger_token ?? null);
-      });
-    });
-  }
-  return localStorage.getItem("pwmnger_token");
+  return getMemoryAuthToken();
 }
 
 export async function clearVault(): Promise<void> {
@@ -169,13 +158,12 @@ export async function clearVault(): Promise<void> {
 }
 
 export async function clearAuthToken(): Promise<void> {
+  setMemoryAuthToken(null);
+
+  // Best-effort cleanup for tokens persisted by older versions.
   if (typeof _chrome !== "undefined" && _chrome.storage && _chrome.storage.local) {
-    return new Promise((resolve, reject) => {
-      _chrome.storage.local.remove("pwmnger_token", () => {
-        if (_chrome.runtime.lastError) reject(_chrome.runtime.lastError);
-        else resolve();
-      });
+    return new Promise((resolve) => {
+      _chrome.storage.local.remove("pwmnger_token", () => resolve(void 0));
     });
   }
-  localStorage.removeItem("pwmnger_token");
 }

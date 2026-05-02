@@ -9,5 +9,11 @@
       "@pwmnger/*": ["../*/src"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../crypto" },
+    { "path": "../storage" },
+    { "path": "../vault" },
+    { "path": "../errors" }
+  ]
 }

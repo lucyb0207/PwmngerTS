@@ -1,4 +1,5 @@
 import type { EncryptedPayload } from "./types";
+import { ENCRYPTED_PAYLOAD_VERSION } from "./types";
 
 export async function encryptData(
   key: CryptoKey,
@@ -14,6 +15,7 @@ export async function encryptData(
   );
 
   return {
+    version: ENCRYPTED_PAYLOAD_VERSION,
     iv: Array.from(iv),
     data: Array.from(new Uint8Array(encrypted)),
   };

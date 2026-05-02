@@ -14,8 +14,8 @@ type StoredVault = {
 describe("IndexedDB Storage", () => {
   const mockStoredVault: StoredVault = {
     salt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-    encryptedVault: { iv: [1, 2, 3], data: [4, 5, 6] },
-    encryptedVaultKey: { iv: [7, 8, 9], data: [10, 11, 12] },
+    encryptedVault: { version: 1, iv: [1, 2, 3], data: [4, 5, 6] },
+    encryptedVaultKey: { version: 1, iv: [7, 8, 9], data: [10, 11, 12] },
     updatedAt: Date.now(),
   };
 

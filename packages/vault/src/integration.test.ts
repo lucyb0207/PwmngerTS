@@ -1,13 +1,12 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from "vitest";
 import { encryptData } from "../../crypto/src/encrypt";
 import { decryptData } from "../../crypto/src/decrypt";
-import { deriveMasterKey } from "../../crypto/src/kdf";
-import { randomBytes } from "../../crypto/src/random";
+import { deriveKeysFromPassword } from "../../crypto/src/kdf";
 import { createEmptyVault } from "./vault";
 import type { VaultEntry, Vault } from "./types";
 
 describe("Integration Tests (Crypto + Vault)", () => {
-  let masterKey: CryptoKey;
+  let encryptionKey: CryptoKey;
   let vault: Vault;
   const password = "MasterPassword123!";
   const salt = new Uint8Array(16);
@@ -16,7 +15,8 @@ describe("Integration Tests (Crypto + Vault)", () => {
   beforeAll(async () => {
     // Increase timeout for argon2 operations
     vi.setConfig({ testTimeout: 30000 });
-    masterKey = await deriveMasterKey(password, salt);
+    const keys = await deriveKeysFromPassword(password, salt);
+    encryptionKey = keys.encryptionKey;
   }, 30000);
 
   beforeEach(() => {
@@ -32,31 +32,35 @@ describe("Integration Tests (Crypto + Vault)", () => {
       lastModified: Date.now(),
     });
 
-    const encryptedVault = await encryptData(masterKey, vault);
+    const encryptedVault = await encryptData(encryptionKey, vault);
     expect(encryptedVault.iv).toBeDefined();
     expect(encryptedVault.data).toBeDefined();
+    expect(encryptedVault.version).toBe(1);
 
-    const decryptedVault = (await decryptData(masterKey, {
-      iv: new Uint8Array(encryptedVault.iv),
-      data: new Uint8Array(encryptedVault.data),
-    } as any)) as Vault;
+    const decryptedVault = (await decryptData(encryptionKey, {
+      iv: Array.from(new Uint8Array(encryptedVault.iv)),
+      data: Array.from(new Uint8Array(encryptedVault.data)),
+      version: encryptedVault.version,
+    })) as Vault;
 
     expect(decryptedVault.entries.length).toBe(1);
     expect(decryptedVault.entries[0]!.site).toBe("bank.example.com");
   });
 
   test("Test 6: Access Control - Wrong Password", async () => {
-    const encryptedVault = await encryptData(masterKey, vault);
+    const encryptedVault = await encryptData(encryptionKey, vault);
     const wrongPassword = "WrongPassword123!";
-    const wrongKey = await deriveMasterKey(wrongPassword, salt);
+    const wrongKey = (await deriveKeysFromPassword(wrongPassword, salt))
+      .encryptionKey;
 
     await expect(
       decryptData(wrongKey, {
-        iv: new Uint8Array(encryptedVault.iv),
-        data: new Uint8Array(encryptedVault.data),
-      } as any),
+        iv: Array.from(new Uint8Array(encryptedVault.iv)),
+        data: Array.from(new Uint8Array(encryptedVault.data)),
+        version: encryptedVault.version,
+      }),
     ).rejects.toThrow();
-  });
+  }, 30000);
 
   test("Test 7: Large Dataset Processing", async () => {
     const largeVault = createEmptyVault();
@@ -70,11 +74,12 @@ describe("Integration Tests (Crypto + Vault)", () => {
       });
     }
 
-    const encrypted = await encryptData(masterKey, largeVault);
-    const decrypted = (await decryptData(masterKey, {
-      iv: new Uint8Array(encrypted.iv),
-      data: new Uint8Array(encrypted.data),
-    } as any)) as Vault;
+    const encrypted = await encryptData(encryptionKey, largeVault);
+    const decrypted = (await decryptData(encryptionKey, {
+      iv: Array.from(new Uint8Array(encrypted.iv)),
+      data: Array.from(new Uint8Array(encrypted.data)),
+      version: encrypted.version,
+    })) as Vault;
 
     expect(decrypted.entries.length).toBe(50);
   });
@@ -94,11 +99,12 @@ describe("Integration Tests (Crypto + Vault)", () => {
     vault.updatedAt = Date.now();
 
     // 2. Encrypt and Decrypt
-    const encrypted = await encryptData(masterKey, vault);
-    const decrypted = (await decryptData(masterKey, {
-      iv: new Uint8Array(encrypted.iv),
-      data: new Uint8Array(encrypted.data),
-    } as any)) as Vault;
+    const encrypted = await encryptData(encryptionKey, vault);
+    const decrypted = (await decryptData(encryptionKey, {
+      iv: Array.from(new Uint8Array(encrypted.iv)),
+      data: Array.from(new Uint8Array(encrypted.data)),
+      version: encrypted.version,
+    })) as Vault;
 
     // 3. Verify Integrity
     const folders = decrypted.folders;

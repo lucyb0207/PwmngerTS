@@ -34,3 +34,9 @@ export class ConflictError extends BaseError {
     super(message, 409, code);
   }
 }
+
+export class MissingVersionError extends BaseError {
+  constructor(message: string = "Encrypted payload missing version field") {
+    super(message, 400, "MISSING_VERSION");
+  }
+}

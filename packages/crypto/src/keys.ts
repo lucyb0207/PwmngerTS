@@ -1,4 +1,6 @@
+import { MissingVersionError } from "@pwmnger/errors";
 import type { EncryptedPayload } from "./types";
+import { ENCRYPTED_PAYLOAD_VERSION } from "./types";
 
 /**
  * Wraps (encrypts) a CryptoKey using another CryptoKey.
@@ -18,6 +20,7 @@ export async function wrapKey(
   );
 
   return {
+    version: ENCRYPTED_PAYLOAD_VERSION,
     iv: Array.from(iv),
     data: Array.from(new Uint8Array(wrappedKeyBuffer)),
   };
@@ -32,6 +35,10 @@ export async function unwrapKey(
   unwrappedKeyAlgorithm: any = { name: "AES-GCM", length: 256 },
   keyUsages: KeyUsage[] = ["encrypt", "decrypt"],
 ): Promise<CryptoKey> {
+  if (wrappedPayload.version === undefined) {
+    throw new MissingVersionError();
+  }
+
   const iv = new Uint8Array(wrappedPayload.iv);
   const data = new Uint8Array(wrappedPayload.data);
 
@@ -41,7 +48,7 @@ export async function unwrapKey(
     unwrappingKey,
     { name: "AES-GCM", iv },
     unwrappedKeyAlgorithm,
-    true, // extractable
+    true,
     keyUsages,
   );
 }

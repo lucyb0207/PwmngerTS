@@ -1,5 +1,10 @@
+import { describe, test, expect, beforeEach } from "vitest";
 import { createEmptyVault } from "./vault";
 import type { VaultEntry, Vault } from "./types";
+import { migrateVault, VAULT_VERSION } from "./schema";
+import { encryptData } from "../../crypto/src/encrypt";
+import { deriveKeysFromPassword } from "../../crypto/src/kdf";
+import { randomBytes } from "../../crypto/src/random";
 
 describe("Vault Package", () => {
   let vault: Vault;
@@ -31,7 +36,7 @@ describe("Vault Package", () => {
     };
     vault.entries.push(newEntry);
     expect(vault.entries.length).toBe(1);
-    expect(vault.entries[0].id).toBe("entry-1");
+    expect(vault.entries[0]!.id).toBe("entry-1");
   });
 
   test("Test 5: Retrieve Entry", () => {
@@ -79,6 +84,20 @@ describe("Vault Package", () => {
     const serialized = JSON.stringify(vault);
     const deserialized = JSON.parse(serialized) as Vault;
     expect(deserialized.entries.length).toBe(1);
-    expect(deserialized.entries[0].site).toBe("s1");
+    expect(deserialized.entries[0]!.site).toBe("s1");
   });
+
+  test("migrateVault upgrades legacy vaults without version", () => {
+    const legacy = createEmptyVault();
+    delete (legacy as any).version;
+    const m = migrateVault(legacy as Vault);
+    expect(m.version).toBe(VAULT_VERSION);
+  });
+
+  test("encryptData stamps version 1 on ciphertext payload", async () => {
+    const salt = randomBytes(16);
+    const { encryptionKey } = await deriveKeysFromPassword("vault-test!", salt);
+    const enc = await encryptData(encryptionKey, { ping: true });
+    expect(enc.version).toBe(1);
+  }, 60000);
 });

@@ -1,7 +1,10 @@
 export { encryptData } from "./encrypt";
 export { decryptData } from "./decrypt";
-export { deriveMasterKey, deriveAuthHash } from "./kdf";
+export { deriveKeysFromPassword, hashAuthKeyForServer } from "./kdf";
 export { generateVaultKey } from "./vaultKey";
 export { wrapKey, unwrapKey } from "./keys";
 export { wipe, stringToUint8Array } from "./wipe";
+export { KeyVault, keyVault } from "./keyVault";
+export { migrateEncryptedPayload } from "./migratePayload";
 export type { EncryptedPayload } from "./types";
+export { ENCRYPTED_PAYLOAD_VERSION } from "./types";

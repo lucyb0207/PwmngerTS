@@ -9,9 +9,14 @@ import {
   mergeVaults,
 } from "./vaultManager";
 
+const { keyStore } = vi.hoisted(() => {
+  const keyStore = new Map<string, CryptoKey>();
+  return { keyStore };
+});
+
 // Mock dependencies
 vi.mock("@pwmnger/crypto", () => ({
-  deriveMasterKey: vi.fn(),
+  deriveKeysFromPassword: vi.fn(),
   decryptData: vi.fn(),
   encryptData: vi.fn(),
   generateVaultKey: vi.fn(),
@@ -19,17 +24,36 @@ vi.mock("@pwmnger/crypto", () => ({
   unwrapKey: vi.fn(),
   stringToUint8Array: vi.fn((s) => new TextEncoder().encode(s)),
   wipe: vi.fn(),
+  migrateEncryptedPayload: (p: { version?: number; iv: number[]; data: number[] }) => ({
+    ...p,
+    version: p.version ?? 1,
+  }),
+  keyVault: {
+    clear: vi.fn(() => keyStore.clear()),
+    get: vi.fn((id: string) => keyStore.get(id)),
+    set: vi.fn((id: string, k: CryptoKey) => {
+      keyStore.set(id, k);
+    }),
+    delete: vi.fn((id: string) => {
+      keyStore.delete(id);
+    }),
+  },
 }));
 vi.mock("@pwmnger/vault", () => ({
   createEmptyVault: vi.fn(),
+  migrateVault: (v: { version?: number }) =>
+    v.version !== undefined ? v : { ...v, version: 1 },
 }));
 vi.mock("@pwmnger/storage", () => ({
   saveVault: vi.fn(),
   loadVault: vi.fn(),
 }));
+vi.mock("./networkGuard", () => ({
+  guardJsonBody: vi.fn(),
+}));
 
 import {
-  deriveMasterKey,
+  deriveKeysFromPassword,
   decryptData,
   encryptData,
   generateVaultKey,
@@ -45,15 +69,18 @@ describe("VaultManager", () => {
   const mockMasterKey = {} as CryptoKey;
   const mockVaultKey = {} as CryptoKey;
   const mockVault = {
-    id: "test-vault",
+    version: 1,
     entries: [],
-    createdAt: Date.now(),
+    folders: [],
+    deletedEntryIds: [] as string[],
+    deletedFolderIds: [] as string[],
     updatedAt: Date.now(),
   };
-  const mockEncryptedPayload = { iv: [1, 2, 3], data: [4, 5, 6] };
+  const mockEncryptedPayload = { version: 1, iv: [1, 2, 3], data: [4, 5, 6] };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    keyStore.clear();
     // Mock global crypto object
     vi.stubGlobal('crypto', {
       getRandomValues: vi.fn((arr) => arr),
@@ -62,9 +89,8 @@ describe("VaultManager", () => {
     lockVault();
   });
 
-  afterEach(async () => {
-    // Clean up vault state after each test
-    await lockVault();
+  afterEach(() => {
+    lockVault();
   });
 
   describe("isUnlocked", () => {
@@ -78,7 +104,10 @@ describe("VaultManager", () => {
         encryptedVault: mockEncryptedPayload,
         encryptedVaultKey: mockEncryptedPayload,
       });
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(mockVaultKey);
       (decryptData as any).mockResolvedValue(mockVault);
 
@@ -98,7 +127,10 @@ describe("VaultManager", () => {
         encryptedVault: mockEncryptedPayload,
         encryptedVaultKey: mockEncryptedPayload,
       });
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(mockVaultKey);
       (decryptData as any).mockResolvedValue(mockVault);
 
@@ -116,7 +148,10 @@ describe("VaultManager", () => {
         encryptedVault: mockEncryptedPayload,
         encryptedVaultKey: mockEncryptedPayload,
       });
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(mockVaultKey);
       (decryptData as any).mockResolvedValue(mockVault);
 
@@ -124,7 +159,7 @@ describe("VaultManager", () => {
       expect(isUnlocked()).toBe(true);
 
       // Then lock
-      await lockVault();
+      lockVault();
       expect(isUnlocked()).toBe(false);
       expect(() => getVault()).toThrow("Vault is locked");
     });
@@ -132,7 +167,10 @@ describe("VaultManager", () => {
 
   describe("createNewVault", () => {
     it("should create and save a new vault", async () => {
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (generateVaultKey as any).mockResolvedValue(mockVaultKey);
       (createEmptyVault as any).mockReturnValue(mockVault);
       (encryptData as any).mockResolvedValue(mockEncryptedPayload);
@@ -140,7 +178,7 @@ describe("VaultManager", () => {
 
       await createNewVault(mockPassword);
 
-      expect(deriveMasterKey).toHaveBeenCalledWith(
+      expect(deriveKeysFromPassword).toHaveBeenCalledWith(
         expect.any(Uint8Array),
         expect.any(Uint8Array),
       );
@@ -171,7 +209,10 @@ describe("VaultManager", () => {
         encryptedVault: mockEncryptedPayload,
         encryptedVaultKey: mockEncryptedPayload,
       });
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(null);
 
       await expect(unlockVault(mockPassword)).rejects.toThrow(
@@ -185,13 +226,16 @@ describe("VaultManager", () => {
         encryptedVault: mockEncryptedPayload,
         encryptedVaultKey: mockEncryptedPayload,
       });
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(mockVaultKey);
       (decryptData as any).mockResolvedValue(mockVault);
 
       await unlockVault(mockPassword);
 
-      expect(deriveMasterKey).toHaveBeenCalledWith(
+      expect(deriveKeysFromPassword).toHaveBeenCalledWith(
         expect.any(Uint8Array),
         expect.any(Uint8Array),
       );
@@ -276,7 +320,10 @@ describe("VaultManager", () => {
         encryptedVault: mockEncryptedPayload,
         encryptedVaultKey: mockEncryptedPayload,
       });
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(mockVaultKey);
       (decryptData as any).mockResolvedValue(mockVault);
 
@@ -314,7 +361,10 @@ describe("VaultManager", () => {
           encryptedVaultKey: mockEncryptedPayload,
         })
         .mockResolvedValueOnce(null);
-      (deriveMasterKey as any).mockResolvedValue(mockMasterKey);
+      (deriveKeysFromPassword as any).mockResolvedValue({
+        encryptionKey: mockMasterKey,
+        authKey: mockMasterKey,
+      });
       (unwrapKey as any).mockResolvedValue(mockVaultKey);
       (decryptData as any).mockResolvedValue(mockVault);
 

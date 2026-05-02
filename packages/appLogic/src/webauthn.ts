@@ -9,11 +9,12 @@ import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
 } from '@simplewebauthn/types';
+import { loadAuthToken } from "@pwmnger/storage";
 
 const BASE_URL = (globalThis as any).PW_API_URL || "http://localhost:4000";
 
 async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  const token = localStorage.getItem("pwmnger_token");
+  const token = await loadAuthToken();
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
   if (token) {

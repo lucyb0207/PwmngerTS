@@ -17,5 +17,9 @@ export const clearVault = () => currentStorage.clearVault();
 export const clearAuthToken = () => currentStorage.clearAuthToken();
 
 export * from "./types";
+export {
+  setMemoryAuthToken,
+  getMemoryAuthToken,
+} from "./memoryAuthToken";
 // We don't export * from "./indexedDb" to avoid naming conflicts, 
 // seeing as we are re-exporting the same function names as delegates.

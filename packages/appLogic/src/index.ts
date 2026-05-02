@@ -27,3 +27,4 @@ export {
 export * from "./auth";
 export * from "./webauthn";
 export * from "./health";
+export { assertNotCryptoKey, deepAssertNoCryptoKey, guardJsonBody } from "./networkGuard";
