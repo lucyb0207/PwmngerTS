@@ -1,5 +1,5 @@
 import {
-  deriveMasterKey,
+  deriveKeysFromPassword,
   decryptData,
   encryptData,
   generateVaultKey,
@@ -7,15 +7,28 @@ import {
   unwrapKey,
   wipe,
   stringToUint8Array,
+  keyVault,
+  migrateEncryptedPayload,
 } from "@pwmnger/crypto";
-import { createEmptyVault } from "@pwmnger/vault";
+import { createEmptyVault, migrateVault } from "@pwmnger/vault";
 import { saveVault, loadVault, clearVault } from "@pwmnger/storage";
 import { VaultError } from "@pwmnger/errors";
+import { guardJsonBody } from "./networkGuard";
 
 import type { Vault, VaultEntry, Folder } from "@pwmnger/vault";
 
+const VAULT_DATA_KEY_ID = "vaultDataKey";
+
+function getVaultDataKey(): CryptoKey | null {
+  return keyVault.get(VAULT_DATA_KEY_ID) ?? null;
+}
+
+function setVaultDataKey(key: CryptoKey | null): void {
+  if (key) keyVault.set(VAULT_DATA_KEY_ID, key);
+  else keyVault.delete(VAULT_DATA_KEY_ID);
+}
+
 let unlockedVault: Vault | null = null;
-let vaultKey: CryptoKey | null = null;
 let autoLockTimer: number | null = null;
 
 export function isUnlocked(): boolean {
@@ -43,12 +56,12 @@ function sanitizeVault(vault: Vault): Vault {
   if (!vault.folders) vault.folders = [];
   vault.folders = vault.folders.filter(f => f && typeof f === 'object' && f.id && f.name);
 
-  return vault;
+  return migrateVault(vault);
 }
 
-export async function lockVault() {
+export function lockVault() {
   unlockedVault = null;
-  vaultKey = null;
+  keyVault.clear();
 }
 
 export async function checkVaultExists(): Promise<boolean> {
@@ -59,25 +72,29 @@ export async function checkVaultExists(): Promise<boolean> {
 export async function resetLocalVault() {
   await clearVault();
   unlockedVault = null;
-  vaultKey = null;
+  keyVault.clear();
 }
 
-export async function createNewVault(masterPassword: string) {
+export async function createNewVault(
+  masterPassword: string,
+  saltArg?: Uint8Array,
+) {
   console.log("createNewVault: Starting...");
   const passwordBuffer = stringToUint8Array(masterPassword);
   try {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    console.log("createNewVault: Salt generated, deriving master key...");
-    const masterKey = await deriveMasterKey(passwordBuffer, salt);
+    const salt = saltArg ?? crypto.getRandomValues(new Uint8Array(16));
+    console.log("createNewVault: Salt generated, deriving keys...");
+    const { encryptionKey } = await deriveKeysFromPassword(passwordBuffer, salt);
 
-    console.log("createNewVault: Master key derived, generating vault key...");
-    vaultKey = await generateVaultKey();
+    console.log("createNewVault: Keys derived, generating vault key...");
+    setVaultDataKey(await generateVaultKey());
     unlockedVault = createEmptyVault();
 
     console.log("createNewVault: Encrypting initial vault...");
-    const encryptedVault = await encryptData(vaultKey, unlockedVault);
+    const vk = getVaultDataKey()!;
+    const encryptedVault = await encryptData(vk, unlockedVault);
     console.log("createNewVault: Wrapping vault key...");
-    const encryptedVaultKey = await wrapKey(masterKey, vaultKey);
+    const encryptedVaultKey = await wrapKey(encryptionKey, vk);
 
     await saveVault({
       salt: Array.from(salt),
@@ -158,11 +175,13 @@ export async function unlockVault(masterPassword: string) {
   const passwordBuffer = stringToUint8Array(masterPassword);
 
   try {
-    const masterKey = await deriveMasterKey(passwordBuffer, salt);
+    const { encryptionKey } = await deriveKeysFromPassword(passwordBuffer, salt);
 
-    // FIX: Use unwrapKey for CryptoKey instead of decryptData
+    const wrappedKeyPayload = migrateEncryptedPayload(stored.encryptedVaultKey);
+    const vaultPayload = migrateEncryptedPayload(stored.encryptedVault);
+
     try {
-      vaultKey = await unwrapKey(masterKey, stored.encryptedVaultKey);
+      setVaultDataKey(await unwrapKey(encryptionKey, wrappedKeyPayload));
     } catch (err) {
       console.error("Master key decryption error (Key mismatch):", err);
       throw new Error(
@@ -170,9 +189,9 @@ export async function unlockVault(masterPassword: string) {
       );
     }
 
-    if (!vaultKey) throw new Error("Failed to decrypt vault key");
+    if (!getVaultDataKey()) throw new Error("Failed to decrypt vault key");
 
-    unlockedVault = await decryptData<Vault>(vaultKey, stored.encryptedVault);
+    unlockedVault = await decryptData<Vault>(getVaultDataKey()!, vaultPayload);
     unlockedVault = sanitizeVault(unlockedVault);
     console.log("unlockVault: Successful.");
   } finally {
@@ -181,13 +200,14 @@ export async function unlockVault(masterPassword: string) {
 }
 
 export async function saveCurrentVault() {
-  if (!vaultKey || !unlockedVault) {
+  const vk = getVaultDataKey();
+  if (!vk || !unlockedVault) {
     throw new VaultError("Vault is not unlocked (missing keys or vault data)", 403);
   }
 
   try {
     unlockedVault.updatedAt = Date.now();
-    const encryptedVault = await encryptData(vaultKey, unlockedVault);
+    const encryptedVault = await encryptData(vk, unlockedVault);
 
     const stored = await loadVault();
     if (!stored) {
@@ -344,8 +364,9 @@ export async function exportEncryptedVault() {
 
   // We sync the entire stored object (salt, encryptedVault, encryptedVaultKey)
   // But we use the latest memory-state for the encryptedVault part if unlocked
-  if (unlockedVault && vaultKey) {
-    const latestEncryptedVault = await encryptData(vaultKey, unlockedVault);
+  const vk = getVaultDataKey();
+  if (unlockedVault && vk) {
+    const latestEncryptedVault = await encryptData(vk, unlockedVault);
     return {
       ...stored,
       encryptedVault: latestEncryptedVault,
@@ -396,8 +417,12 @@ export async function importEncryptedVault(payload: any) {
   }
 
   // If we are unlocked, we merge
-  if (vaultKey && unlockedVault) {
-    const remoteVault = await decryptData<Vault>(vaultKey, payload.encryptedVault);
+  const vk = getVaultDataKey();
+  if (vk && unlockedVault) {
+    const remoteVault = await decryptData<Vault>(
+      vk,
+      migrateEncryptedPayload(payload.encryptedVault),
+    );
     unlockedVault = mergeVaults(unlockedVault, remoteVault);
     await saveCurrentVault();
   } else {
@@ -413,7 +438,7 @@ export async function importEncryptedVault(payload: any) {
 }
 
 export async function exportRecoveryData() {
-  if (!vaultKey) throw new Error("Vault is locked");
+  if (!getVaultDataKey()) throw new Error("Vault is locked");
 
   // Generate a random Recovery Key (32 bytes)
   const recoveryKeyBytes = crypto.getRandomValues(new Uint8Array(32));
@@ -428,7 +453,7 @@ export async function exportRecoveryData() {
   // Wrap the Vault Key with this Recovery Key
   // This allows us to regain access to the vault data (which is encrypted with Vault Key)
   // without needing the Master Password.
-  const wrappedVaultKey = await wrapKey(recoveryKeyBits, vaultKey);
+  const wrappedVaultKey = await wrapKey(recoveryKeyBits, getVaultDataKey()!);
 
   // Convert recovery key to hex for user to save
   const recoveryKeyHex = Array.from(recoveryKeyBytes)
@@ -464,25 +489,30 @@ export async function unlockVaultWithRecoveryKey(
   );
 
   try {
-    vaultKey = await unwrapKey(recoveryKeyBits, wrappedVaultKey);
+    setVaultDataKey(
+      await unwrapKey(recoveryKeyBits, migrateEncryptedPayload(wrappedVaultKey)),
+    );
   } catch (err) {
     console.error("Recovery key decryption error:", err);
     throw new Error("This recovery kit does not match your vault. Please make sure you are using the latest kit generated for this account.");
   }
 
-  if (!vaultKey) throw new Error("Failed to decrypt vault key");
+  if (!getVaultDataKey()) throw new Error("Failed to decrypt vault key");
 
-  unlockedVault = await decryptData<Vault>(vaultKey, stored.encryptedVault);
+  unlockedVault = await decryptData<Vault>(
+    getVaultDataKey()!,
+    migrateEncryptedPayload(stored.encryptedVault),
+  );
   await saveCurrentVault();
   console.log("unlockVaultWithRecoveryKey: Successful.");
 }
 
-const BASE_URL = (globalThis as any).PW_API_URL || "http://localhost:4000";
+const getBaseUrl = () => (globalThis as any).PW_API_URL || "http://localhost:4000";
 
 export async function syncToCloud() {
   const encrypted = await exportEncryptedVault();
 
-  const res = await fetch(`${BASE_URL}/vault/sync`, {
+  const res = await fetch(`${getBaseUrl()}/vault/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vaultPayload: encrypted }),
@@ -499,7 +529,7 @@ export async function syncToCloud() {
 }
 
 export async function syncFromCloud() {
-  const res = await fetch(`${BASE_URL}/vault/sync`, {
+  const res = await fetch(`${getBaseUrl()}/vault/sync`, {
     credentials: "include",
   });
 
@@ -522,11 +552,13 @@ export async function syncVaultWithCloud() {
 
   // 2. Push current (merged) local to cloud
   const encrypted = await exportEncryptedVault();
+  const pushBody = { vaultPayload: encrypted };
+  guardJsonBody(pushBody, "syncVaultWithCloud");
 
-  const res = await fetch(`${BASE_URL}/vault/sync`, {
+  const res = await fetch(`${getBaseUrl()}/vault/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vaultPayload: encrypted }),
+    body: JSON.stringify(pushBody),
     credentials: "include",
   });
 
@@ -542,7 +574,7 @@ export async function syncVaultWithCloud() {
 }
 
 export async function rekeyVault(oldPassword: string, newPassword: string) {
-  if (!vaultKey || !unlockedVault) throw new Error("Vault is locked");
+  if (!getVaultDataKey() || !unlockedVault) throw new Error("Vault is locked");
 
   const oldPasswordBuffer = stringToUint8Array(oldPassword);
   const newPasswordBuffer = stringToUint8Array(newPassword);
@@ -553,17 +585,23 @@ export async function rekeyVault(oldPassword: string, newPassword: string) {
 
     // 1. Verify old password locally
     const oldSalt = new Uint8Array(stored.salt);
-    const oldMasterKey = await deriveMasterKey(oldPasswordBuffer, oldSalt);
-    
-    // Test unwrapping to ensure password is correct
-    await unwrapKey(oldMasterKey, stored.encryptedVaultKey);
+    const { encryptionKey: oldEncryptionKey } = await deriveKeysFromPassword(
+      oldPasswordBuffer,
+      oldSalt,
+    );
 
-    // 2. Generate new salt and Master Key
+    await unwrapKey(
+      oldEncryptionKey,
+      migrateEncryptedPayload(stored.encryptedVaultKey),
+    );
+
     const newSalt = crypto.getRandomValues(new Uint8Array(16));
-    const newMasterKey = await deriveMasterKey(newPasswordBuffer, newSalt);
+    const { encryptionKey: newEncryptionKey } = await deriveKeysFromPassword(
+      newPasswordBuffer,
+      newSalt,
+    );
 
-    // 3. Re-wrap existing Vault Key with new Master Key
-    const newEncryptedVaultKey = await wrapKey(newMasterKey, vaultKey);
+    const newEncryptedVaultKey = await wrapKey(newEncryptionKey, getVaultDataKey()!);
 
     // 4. Update local storage metadata
     await saveVault({
@@ -575,7 +613,7 @@ export async function rekeyVault(oldPassword: string, newPassword: string) {
 
     // 5. Update Backend Password Hash
     const { changeMasterPassword } = await import("./auth");
-    await changeMasterPassword(oldPassword, newPassword);
+    await changeMasterPassword(oldPassword, newPassword, newSalt);
 
     // 6. Sync to cloud
     await syncVaultWithCloud();

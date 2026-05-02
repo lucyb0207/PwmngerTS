@@ -1,30 +1,61 @@
-import { deriveAuthHash, wipe, stringToUint8Array } from "@pwmnger/crypto";
-import { saveAuthToken, loadAuthToken } from "@pwmnger/storage";
+import {
+  deriveKeysFromPassword,
+  hashAuthKeyForServer,
+  wipe,
+  stringToUint8Array,
+} from "@pwmnger/crypto";
+import {
+  saveAuthToken,
+  loadAuthToken,
+  clearAuthToken,
+  loadVault,
+} from "@pwmnger/storage";
+import { guardJsonBody } from "./networkGuard";
 
-const BASE_URL = (globalThis as any).PW_API_URL || "http://localhost:4000";
+const getBaseUrl = () => (globalThis as any).PW_API_URL || "http://localhost:4000";
+
+export async function fetchKdfSalt(email: string): Promise<Uint8Array> {
+  const res = await fetch(
+    `${getBaseUrl()}/auth/kdf-salt?email=${encodeURIComponent(email)}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) {
+    throw new Error("Could not load KDF salt for this account.");
+  }
+  const data = (await res.json()) as { kdfSalt: number[] };
+  return new Uint8Array(data.kdfSalt);
+}
 
 async function authenticatedFetch(url: string, options: RequestInit = {}, isRetry = false) {
   let token = await loadAuthToken();
   const headers = new Headers(options.headers || {});
-  
+
   headers.set("Content-Type", "application/json");
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
+  if (options.body !== undefined && options.body !== null) {
+    if (typeof options.body === "string") {
+      try {
+        guardJsonBody(JSON.parse(options.body), "authenticatedFetch.body");
+      } catch {
+        /* non-JSON body */
+      }
+    }
+  }
+
   let res = await fetch(url, {
     ...options,
     headers,
-    credentials: "include", // Keep cookies for web
+    credentials: "include",
   });
 
-  // Silent Refresh Logic
   if (res.status === 401 && !isRetry && !url.includes("/auth/refresh") && !url.includes("/auth/login")) {
     try {
       console.log("Access token expired, attempting silent refresh...");
       await refreshAccount();
-      
-      // Retry original request with new token
+
       token = await loadAuthToken();
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
@@ -36,24 +67,33 @@ async function authenticatedFetch(url: string, options: RequestInit = {}, isRetr
       }
     } catch (e) {
       console.error("Silent refresh failed", e);
-      // Let the original 401 pass through so UI can redirect to login
     }
   }
 
   return res;
 }
 
-export async function registerAccount(email: string, masterPassword: string) {
-  // Zero-Knowledge: Derive Auth Hash from (Password + Email)
-  // Server never sees the Password.
+export async function registerAccount(
+  email: string,
+  masterPassword: string,
+  kdfSalt: Uint8Array,
+) {
   const passwordBuffer = stringToUint8Array(masterPassword);
   try {
-    const authHash = await deriveAuthHash(passwordBuffer, email);
+    const { authKey } = await deriveKeysFromPassword(passwordBuffer, kdfSalt);
+    const authHash = await hashAuthKeyForServer(authKey);
 
-    const res = await fetch(`${BASE_URL}/auth/register`, {
+    const body = {
+      email,
+      authHash,
+      kdfSalt: Array.from(kdfSalt),
+    };
+    guardJsonBody(body, "registerAccount");
+
+    const res = await fetch(`${getBaseUrl()}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, authHash }),
+      body: JSON.stringify(body),
       credentials: "include",
     });
 
@@ -77,25 +117,36 @@ export async function loginAccount(
   email: string,
   masterPassword: string,
   twoFactorToken?: string,
+  kdfSalt?: Uint8Array,
 ) {
   const passwordBuffer = stringToUint8Array(masterPassword);
   try {
-    const authHash = await deriveAuthHash(passwordBuffer, email);
+    let salt = kdfSalt;
+    if (!salt) {
+      const stored = await loadVault();
+      if (stored) salt = new Uint8Array(stored.salt);
+    }
+    if (!salt) {
+      salt = await fetchKdfSalt(email);
+    }
 
-    const res = await fetch(`${BASE_URL}/auth/login`, {
+    const { authKey } = await deriveKeysFromPassword(passwordBuffer, salt);
+    const authHash = await hashAuthKeyForServer(authKey);
+
+    const body = { email, authHash, twoFactorToken };
+    guardJsonBody(body, "loginAccount");
+
+    const res = await fetch(`${getBaseUrl()}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, authHash, twoFactorToken }),
+      body: JSON.stringify(body),
       credentials: "include",
     });
 
-
-
     if (!res.ok) {
       const err = await res.json();
-      // 2FA Handling
       if (err.requires2FA) {
-        const error: any = new Error("2FA Required");
+        const error: Error & { requires2FA?: boolean } = new Error("2FA Required");
         error.requires2FA = true;
         throw error;
       }
@@ -112,7 +163,7 @@ export async function loginAccount(
 }
 
 export async function refreshAccount() {
-  const res = await authenticatedFetch(`${BASE_URL}/auth/refresh`, {
+  const res = await authenticatedFetch(`${getBaseUrl()}/auth/refresh`, {
     method: "POST",
   });
   if (!res.ok) throw new Error("Session expired");
@@ -125,48 +176,76 @@ export async function refreshAccount() {
 }
 
 export async function setup2FA() {
-  const res = await authenticatedFetch(`${BASE_URL}/auth/2fa/setup`, {
+  const res = await authenticatedFetch(`${getBaseUrl()}/auth/2fa/setup`, {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to setup 2FA");
-  return res.json(); // { secret, qrCode }
+  return res.json();
 }
 
 export async function verify2FASetup(
   twoFactorToken: string,
   secret: string,
 ) {
-  const res = await authenticatedFetch(`${BASE_URL}/auth/2fa/verify`, {
+  const body = { token: twoFactorToken, secret };
+  guardJsonBody(body, "verify2FASetup");
+  const res = await authenticatedFetch(`${getBaseUrl()}/auth/2fa/verify`, {
     method: "POST",
-    body: JSON.stringify({ token: twoFactorToken, secret }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error("Invalid Token");
   return res.json();
 }
 
 export async function getAccountStatus() {
-  const res = await authenticatedFetch(`${BASE_URL}/auth/me`);
+  const res = await authenticatedFetch(`${getBaseUrl()}/auth/me`);
   if (!res.ok) throw new Error("Failed to fetch account status");
-  return res.json(); // { email, is2FAEnabled }
+  return res.json() as Promise<{
+    email: string;
+    is2FAEnabled: boolean;
+    kdfSalt: number[] | null;
+  }>;
 }
 
 export async function logoutAccount() {
-  await authenticatedFetch(`${BASE_URL}/auth/logout`, {
-    method: "POST",
-  });
+  try {
+    await authenticatedFetch(`${getBaseUrl()}/auth/logout`, {
+      method: "POST",
+    });
+  } finally {
+    await clearAuthToken();
+  }
 }
 
-export async function changeMasterPassword(oldPass: string, newPass: string) {
+export async function changeMasterPassword(oldPass: string, newPass: string, newSalt?: Uint8Array) {
   const oldBuf = stringToUint8Array(oldPass);
   const newBuf = stringToUint8Array(newPass);
-  
-  try {
-    const oldAuthHash = await deriveAuthHash(oldBuf, (await getAccountStatus()).email);
-    const newAuthHash = await deriveAuthHash(newBuf, (await getAccountStatus()).email);
 
-    const res = await authenticatedFetch(`${BASE_URL}/auth/change-password`, {
+  try {
+    const status = await getAccountStatus();
+    if (!status.kdfSalt) {
+      throw new Error("Account is missing KDF salt; cannot change password.");
+    }
+    const currentSalt = new Uint8Array(status.kdfSalt);
+    const saltForNewHash = newSalt || currentSalt;
+
+    const oldAuthHash = await hashAuthKeyForServer(
+      (await deriveKeysFromPassword(oldBuf, currentSalt)).authKey,
+    );
+    const newAuthHash = await hashAuthKeyForServer(
+      (await deriveKeysFromPassword(newBuf, saltForNewHash)).authKey,
+    );
+
+    const body = { 
+      oldAuthHash, 
+      newAuthHash,
+      newKdfSalt: newSalt ? Array.from(newSalt) : undefined
+    };
+    guardJsonBody(body, "changeMasterPassword");
+
+    const res = await authenticatedFetch(`${getBaseUrl()}/auth/change-password`, {
       method: "POST",
-      body: JSON.stringify({ oldAuthHash, newAuthHash })
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
