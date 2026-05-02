@@ -2,26 +2,24 @@
 
 > ⚠️ **IMPORTANT:** This project is experimental and has not undergone a formal security audit. Do not use it to store highly sensitive passwords yet.
 
-**An open-source, zero-knowledge, cross-platform password manager built with TypeScript**
+**An open-source, zero-knowledge, cross-platform password manager built with TypeScript and Next.js**
 
-PwmngerTS is a client-side encrypted password manager designed to handle secrets across web, browser extensions, and mobile/desktop platforms.
-All encryption is intended to happen **locally on the user's device** — the server is designed to never see plaintext passwords.
+PwmngerTS is a client-side encrypted password manager designed to handle secrets across web and browser extension platforms. All encryption happens **locally on the user's device** — the server never sees plaintext passwords or master keys.
 
 > Inspired by zero-knowledge architectures like Bitwarden, but built for learning, extensibility, and open collaboration.
 
 ---
 
-## ✨ Features (v1.6.0)
+## ✨ Features (v2.0.0)
 
-- 🔐 **Zero-Knowledge Design:** Built using client-side encryption (Web Crypto API).
-- 🎨 **Premium UI/UX:** Stunning high-performance landing page with dynamic mesh backgrounds and smooth transitions.
+- 🔐 **Zero-Knowledge Design:** Powered by client-side encryption (Web Crypto API + Argon2id).
+- 🎨 **Unified Next.js App:** A single, high-performance App Router codebase for the vault and API.
 - 🧩 **Chrome Extension:** Secure browser integration with robust error handling and cloud sync.
-- 📂 **Folder Organization:** Manage and categorize entries efficiently.
-- 🛡️ **Two-Factor Authentication (2FA):** Secure login with TOTP enforcement.
-- 🔑 **Hardware Security Keys:** FIDO2/WebAuthn support (e.g., YubiKey) for physical MFA.
-- 🆘 **Account Recovery:** Restore access via Emergency Recovery Kit if password is lost.
-- ⚡ **Performance Optimized:** Route-based lazy loading and optimized crypto operations.
-- ☁️ **Secure Sync:** Encrypted blob synchronization to self-hosted backend.
+- 🛡️ **Advanced MFA:** Support for both **TOTP (2FA)** and **WebAuthn (Passkeys/Security Keys)**.
+- 🆘 **Account Recovery:** Secure vault restoration via an Emergency Recovery Kit if you lose your password.
+- 🔑 **Master Password Rotation:** Securely change your password with automatic **KDF Salt Rotation**.
+- ☁️ **Seamless Sync:** Robust encrypted blob synchronization with conflict resolution.
+- 📂 **Organization:** Manage entries with folders and a powerful search interface.
 
 ---
 
@@ -29,137 +27,82 @@ All encryption is intended to happen **locally on the user's device** — the se
 
 ```mermaid
 graph TD
-    Client[Client Device] -->|Encrypted Blob| Server[Backend API]
-    Client -->|Argon2id Hash| Server
-    Server -->|Storage| DB[(PostgreSQL)]
+    Client[Client Device] -->|Encrypted Blob| NextJS[Next.js API Routes]
+    Client -->|Argon2id Hash + Salt| NextJS
+    NextJS -->|ORM| Prisma[Prisma Client]
+    Prisma -->|Storage| DB[(PostgreSQL)]
 ```
 
 **Security Guarantees:**
-
 - Backend **NEVER** sees plaintext data.
-- Master Password **NEVER** leaves the client device (Argon2id derivation).
+- Master Password **NEVER** leaves the client (Argon2id KDF).
 - Data is encrypted with **AES-256-GCM**.
+- Dual-layer authentication using JWT (HTTP-only Cookies + Authorization Headers).
 
 ---
 
 ## 📁 Project Structure
 
 ```
-PwmngerTS/
 ├─ apps/
-│  ├─ web/          # Modern React Web Vault
-│  ├─ extension/    # Browser Extension (Manifest V3)
-│  └─ mobile/       # React Native App (In Progress)
+│  ├─ vault-next/    # Unified Next.js Frontend & API
+│  └─ extension/     # Browser Extension (Manifest V3)
 │
 ├─ packages/
-│  ├─ crypto/       # Shared Cryptography (Argon2id, AES-GCM)
-│  ├─ appLogic/     # Vault & Auth Business Logic
-│  ├─ vault/        # Shared Data Models
-│  ├─ storage/      # Persistence Layer (IndexedDB/Chrome Storage)
-│  └─ ui/           # Shared Component Library
-│
-├─ apps/
-│  ├─ web/          # Modern React Web Vault
-│  ├─ extension/    # Browser Extension (Manifest V3)
-│  ├─ mobile/       # React Native App (In Progress)
-│  └─ backend/         # Node.js + Prisma API
+│  ├─ crypto/        # Argon2id, AES-GCM, HKDF logic
+│  ├─ appLogic/      # Vault management & Auth orchestration
+│  ├─ vault/         # Shared data models & migrations
+│  ├─ storage/       # Persistence (IndexedDB / Chrome Storage)
+│  └─ ui/            # Premium Component Library
 ```
 
 ---
 
 ## 🚀 Getting Started
 
+### Prerequisites
+- Node.js (v18+)
+- pnpm (v8+)
+- PostgreSQL (or Supabase)
+
 ### Quick Start (Local Dev)
 
 1.  **Clone & Install**
-
     ```bash
     git clone https://github.com/okikijesutech/PwmngerTS.git
     cd PwmngerTS
     pnpm install
     ```
 
-2.  **Start Environment**
-
+2.  **Environment Setup**
+    Navigate to `apps/vault-next` and create a `.env` file (see `.env.example`).
     ```bash
-    # Starts Web, Backend, and Extension build in watch mode
+    cd apps/vault-next
+    cp .env.example .env
+    npx prisma db push
+    ```
+
+3.  **Start Dev Server**
+    ```bash
+    # From the root directory
     pnpm run dev
     ```
 
-3.  **Access**
-    - Web Vault: `http://127.0.0.1:3333`
-    - API: `http://localhost:4000`
-
----
-
-> [!TIP]
-> **Windows Users:** If you see an `EACCES` error when starting the web app, it's likely due to a port exclusion range (often caused by WSL/Hyper-V). We use port **3333** by default as it's generally outside these ranges. You can check your exclusions with `netsh int ipv4 show excludedportrange protocol=tcp`.
-
----
-
-## 🚀 Deployment (Zero-Cost Hosting)
-
-PwmngerTS is designed to be easily self-hosted using modern cloud providers with generous free tiers:
-
-| Layer | Provider | Setup |
-| :--- | :--- | :--- |
-| **Frontend** | [Vercel](https://vercel.com) | Connect GitHub -> Select `apps/web` -> Deploy. |
-| **Backend** | [Render](https://render.com) | Connect GitHub -> Select `backend` -> Deploy. |
-| **Database** | [Supabase](https://supabase.com) | Create project -> Copy Connection String -> Add to Backend `.env`. |
-
-> [!TIP]
-> **See the full [DEPLOYMENT.md](file:///c:/Users/HP/desktop/pwmngerTS/docs/DEPLOYMENT.md) for step-by-step setup and environment variables checklist.**
-
----
-
-## 📦 Distribution (Manual Installation)
-
-Until we are listed on official stores, you can install PwmngerTS manually:
-
-### 🧩 Browser Extension
-1.  Go to [Releases](https://github.com/okikijesutech/PwmngerTS/releases) and download `extension-build.zip`.
-2.  Unzip the folder.
-3.  Open `chrome://extensions` and enable **Developer Mode**.
-4.  Click **Load Unpacked** and select the unzipped folder.
-
-### 📱 Mobile (Android)
-1.  Download the `PwmngerTS.apk` from the latest release.
-2.  Enable **Install from Unknown Sources** in your device settings.
-3.  Install and launch the app.
-
----
-
-## 🧪 Testing
-
-Tests are organized by module to ensure high reliability:
-
-```bash
-# Run all unit tests
-pnpm test
-
-# Run E2E tests (Playwright)
-pnpm run test:e2e
-```
-
-- ✅ **Unit Tests**: Coverage for `@pwmnger/crypto`, `@pwmnger/vault`, and core logic.
-- ✅ **Extension Tests**: UI and interaction testing for the browser extension.
-- ✅ **Security Audits**: Internal audits archived in [docs/audits/](file:///c:/Users/HP/desktop/pwmngerTS/docs/audits/).
-- ✅ **E2E Tests**: Integration testing using Playwright.
+4.  **Access**
+    - Web Vault & API: `http://localhost:3000`
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] Browser extension version (Manifest V3)
+- [x] Unified Next.js Migration (v2.0.0)
 - [x] Two-factor authentication (TOTP)
-- [x] Major Performance Optimization (v1.1.0)
-- [x] Vault Recovery Mechanism
-- [x] Premium Landing Page UI (v1.2.0)
-- [x] Extension Stability Fixes (v1.2.0)
-- [x] Hardware Security Keys (YubiKey/WebAuthn)
-- [/] Mobile app (Expo/React Native) - *Storage layer & Core logic complete*
-- [ ] Auto-fill integration
-- [ ] Passkey support
+- [x] Master Password Salt Rotation
+- [x] Emergency Recovery Kit flow
+- [x] WebAuthn / Passkey support
+- [ ] Browser extension auto-fill integration
+- [ ] Vault sharing (Asymmetric E2EE)
+- [ ] Mobile app (React Native)
 
 ---
 

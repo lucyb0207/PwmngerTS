@@ -53,7 +53,7 @@ To run a safe, local-only environment for security testing or development:
 
 ---
 
-## 🧩 Extension & Mobile Distribution
+## 🧩 Extension Distribution
 
 ### 🧩 Browser Extension
 1.  **Build**: `cd apps/extension && pnpm build`
@@ -63,8 +63,7 @@ To run a safe, local-only environment for security testing or development:
     - Click **Load Unpacked** and select `apps/extension/dist`.
 3.  **Web Store**: Package the `dist` folder as a ZIP and upload via the Chrome Developer Dashboard.
 
-### 📱 Mobile (Experimental)
-- The mobile app is currently in the "Core Logic" phase. Build instructions will be updated upon UI completion.
+
 
 ---
 

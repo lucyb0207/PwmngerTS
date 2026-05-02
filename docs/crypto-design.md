@@ -6,239 +6,82 @@ PwmngerTS implements a zero-knowledge password manager using industry-standard c
 
 ## Key Derivation
 
-### Master Key Derivation
+### Master Key Derivation (Argon2id)
 
-The master password is transformed into a cryptographic key using Argon2id, a memory-hard key derivation function resistant to brute-force attacks.
+The master password is transformed into a cryptographic seed using Argon2id, a memory-hard key derivation function resistant to brute-force and GPU-based attacks.
 
 **Algorithm**: Argon2id  
 **Parameters**:
-
 - **Memory**: 64 MB (65536 KB)
-- **Iterations**: 3
+- **Iterations (Time Cost)**: 10
 - **Parallelism**: 4 threads
 - **Salt**: 128-bit random value (16 bytes)
-- **Output**: 256-bit key (32 bytes)
+- **Output**: 256-bit seed (32 bytes)
 
-**Implementation**: Uses `hash-wasm` library for Argon2id hashing.
+**Implementation**: Uses `hash-wasm` library for high-performance WASM-based hashing in the browser.
+
+### Key Expansion (HKDF)
+
+To separate authentication from encryption, we expand the Argon2id seed using HKDF (HMAC-based Key Derivation Function).
+
+**Algorithm**: HKDF-SHA256  
+**Derived Keys**:
+1. **Encryption Key**: Used for wrapping the Vault Key. (Info: `pwmnger-encryption-v1`)
+2. **Auth Key**: Used for server authentication. (Info: `pwmnger-auth-v1`)
 
 ```typescript
 // From packages/crypto/src/kdf.ts
-export async function deriveMasterKey(
-  password: string,
-  salt: Uint8Array,
-): Promise<CryptoKey>;
-```
-
-The salt is generated once during vault creation and stored with the encrypted vault. This ensures the same password always derives the same master key for a given vault.
-
-### Vault Key Generation
-
-The vault key is a randomly generated AES-256 key used to encrypt the actual vault data.
-
-**Algorithm**: AES-256-GCM  
-**Key Size**: 256 bits (32 bytes)  
-**Generation**: Web Crypto API `crypto.subtle.generateKey()`  
-**Extractable**: Yes (required for key wrapping)
-
-```typescript
-// From packages/crypto/src/vaultKey.ts
-export async function generateVaultKey(): Promise<CryptoKey>;
+const { encryptionKey, authKey } = await deriveKeysFromPassword(password, salt);
 ```
 
 ## Encryption
 
-### Vault Encryption
+### Vault Encryption (AES-256-GCM)
 
-The vault (containing all password entries) is encrypted using AES-256-GCM, which provides both confidentiality and authenticity.
+The vault (containing all password entries) is encrypted using AES-256-GCM, which provides both confidentiality and authenticity (AEAD).
 
 **Algorithm**: AES-256-GCM  
+**Key Size**: 256 bits (32 bytes)  
 **IV**: 96-bit random (12 bytes) - generated per encryption  
-**Tag Length**: 128 bits (default for GCM)  
-**Data Format**: JSON-serialized `Vault` object
-
-```typescript
-// From packages/crypto/src/encrypt.ts
-export async function encryptData<T>(
-  key: CryptoKey,
-  data: T,
-): Promise<EncryptedPayload>;
-```
-
-**EncryptedPayload Structure**:
-
-```typescript
-{
-  iv: number[],    // 12-byte initialization vector
-  data: number[]   // Encrypted ciphertext + authentication tag
-}
-```
+**Tag Length**: 128 bits  
 
 ### Key Wrapping
 
-The vault key is encrypted (wrapped) with the master key to protect it at rest.
+The **Vault Key** (a random AES-256 key) is encrypted (wrapped) with the **Encryption Key** derived from the master password.
 
 **Algorithm**: AES-GCM Key Wrap  
-**Purpose**: Encrypt the vault key using the master key  
-**IV**: 96-bit random per wrap operation
 
-```typescript
-// From packages/crypto/src/keys.ts
-export async function wrapKey(
-  masterKey: CryptoKey,
-  vaultKey: CryptoKey,
-): Promise<EncryptedPayload>;
+## 🛡️ Authentication Flow
 
-export async function unwrapKey(
-  masterKey: CryptoKey,
-  wrappedKey: EncryptedPayload,
-): Promise<CryptoKey>;
-```
+1. **Client**: Derives `Auth Key` via KDF + HKDF.
+2. **Client**: Hashes the `Auth Key` using SHA-256 (`authHash`).
+3. **Server**: Receives `authHash` and verifies it using **Argon2** (server-side hashing).
 
-## Account Recovery
+This "double-hashing" approach ensures that even if the server database is leaked, the attacker only gets an Argon2 hash of a SHA-256 hash, and they still lack the salt and the master password required to derive the encryption keys.
 
-If the master password is lost, the vault can be recovered using an Emergency Recovery Kit.
+## 🔄 Salt Rotation
 
-### Recovery Key Generation
+Whenever a user changes their master password, PwmngerTS performs a **Salt Rotation**:
+1. A new 16-byte random salt is generated.
+2. The vault is re-encrypted using the new salt.
+3. The new salt is uploaded to the server.
 
-The recovery key is a high-entropy 256-bit key that is provided to the user in a human-readable format (mnemonic or hex string).
+This ensures that even if an attacker has captured a legacy "encrypted blob" and the old salt, they cannot use the new password to unlock the old data, effectively breaking the link between old and new security states.
 
-1. **Vault Key Protection**: The vault key is wrapped with the recovery key, just as it is with the master key.
-2. **Persistence**: The wrapped vault key (using the recovery key) is stored alongside the standard vault metadata.
-3. **Usage**: During recovery, the user provides their recovery key, which is used to unwrap the vault key and regain access to the plaintext vault.
+## 🆘 Account Recovery
 
-```typescript
-// From packages/appLogic/src/vaultManager.ts
-export async function generateRecoveryKit(masterKey: CryptoKey, vault: Vault): Promise<string>;
-export async function recoverVault(recoveryKey: string, encryptedVault: EncryptedVault): Promise<Vault>;
-```
-
-## Data Flow
-
-### Vault Creation
-
-```
-User Password
-    ↓
-Random Salt (16 bytes)
-    ↓
-Argon2id(password, salt) → Master Key (256-bit)
-    ↓
-Generate Random Vault Key (256-bit)
-    ↓
-Wrap Vault Key with Master Key → Encrypted Vault Key
-    ↓
-Encrypt Empty Vault with Vault Key → Encrypted Vault
-    ↓
-Store: {salt, encryptedVaultKey, encryptedVault, updatedAt}
-```
-
-### Vault Unlock
-
-```
-User Password + Stored Salt
-    ↓
-Argon2id(password, salt) → Master Key
-    ↓
-Unwrap Encrypted Vault Key → Vault Key
-    ↓
-Decrypt Encrypted Vault → Vault (in memory)
-```
-
-### Adding/Modifying Entries
-
-```
-Modify Vault in Memory
-    ↓
-Encrypt Vault with Vault Key → Encrypted Vault
-    ↓
-Store: {salt, encryptedVaultKey, encryptedVault, updatedAt}
-```
-
-Note: The vault key remains the same; only the encrypted vault blob changes.
+The Emergency Recovery Kit uses a high-entropy **Recovery Key** (256-bit) to wrap the Vault Key. This bypasses the master password requirement while maintaining zero-knowledge security, as the Recovery Key is never sent to the server.
 
 ## Security Properties
 
-✅ **Confidentiality**: AES-256-GCM ensures data cannot be read without the key  
-✅ **Authenticity**: GCM authentication tag prevents tampering  
-✅ **Forward Secrecy**: Changing master password re-wraps vault key  
-✅ **Random IVs**: Each encryption uses a unique, random IV  
-✅ **Strong KDF**: Argon2id makes brute-force attacks computationally expensive  
-✅ **Zero-Knowledge**: Server never sees plaintext or master key
-
-## Threat Model Alignment
-
-| Threat           | Mitigation                                                                 |
-| ---------------- | -------------------------------------------------------------------------- |
-| Server breach    | Server stores only encrypted blobs; cannot decrypt without master password |
-| Network sniffing | Only encrypted data transmitted over network                               |
-| Weak password    | Argon2id parameters make brute-force expensive (64MB memory, 3 iterations) |
-| Key reuse        | Fresh IV generated for each encryption operation                           |
-| Tampering        | GCM authentication tag detects modifications                               |
-| Lost device      | Vault remains encrypted; master password required to unlock                |
-
-## Attacks We Cannot Stop
-
-⚠️ **Client-side malware**: If the user's device is compromised, malware can capture the master password or vault data in memory.  
-⚠️ **Keyloggers**: Can capture master password as it's typed.  
-⚠️ **Compromised OS**: Root-level access can bypass all protections.
-
-**Note**: These limitations apply to all password managers, including commercial solutions like Bitwarden and 1Password.
-
-## Implementation Notes
-
-### Web Crypto API
-
-All cryptographic operations use the browser's native Web Crypto API (`crypto.subtle`), which provides:
-
-- Hardware-accelerated encryption
-- Secure key storage (non-extractable keys when possible)
-- Constant-time operations (resistant to timing attacks)
-
-### No Custom Crypto
-
-We **do not** implement custom cryptographic algorithms. All primitives are provided by:
-
-- Web Crypto API (AES-GCM, key generation)
-- hash-wasm library (Argon2id)
-
-### Key Storage
-
-- **Master Key**: Exists only in memory during an unlocked session; never persisted
-- **Vault Key**: Stored encrypted (wrapped) with the master key
-- **Encrypted Vault**: Stored in IndexedDB and optionally synced to server
-
-### Memory Safety
-
-- Keys are cleared from memory when the vault is locked
-- Master password is not stored anywhere
-- Vault data is cleared from memory on lock
-
-## Sync Security
-
-When syncing to the cloud:
-
-1. **Upload**: Only the encrypted vault blob is sent
-2. **Download**: Encrypted blob is merged with local data using `mergeVaults()`
-3. **Conflict Resolution**: Entries are compared by `lastModified` timestamp
-
-The server never receives:
-
-- Master password
-- Vault key
-- Plaintext vault data
-- Plaintext password entries
-
-## Future Improvements
-
-- [ ] Support for hardware security keys (WebAuthn)
-- [ ] Biometric unlock (with key wrapping)
-- [ ] Key rotation mechanism
-- [ ] Encrypted vault sharing (asymmetric encryption)
-- [ ] Professional security audit
+✅ **Confidentiality**: AES-256-GCM ensures data cannot be read without the key.  
+✅ **Authenticity**: GCM authentication tag prevents tampering.  
+✅ **Zero-Knowledge**: Server never sees plaintext, master keys, or recovery keys.  
+✅ **Brute-Force Resistance**: Argon2id (10 iterations, 64MB) provides strong protection.  
+✅ **Key Separation**: HKDF ensures the key used for login is mathematically distinct from the key used for encryption.
 
 ## References
 
 - [Web Crypto API Specification](https://www.w3.org/TR/WebCryptoAPI/)
-- [Argon2 RFC](https://datatracker.ietf.org/doc/html/rfc9106)
-- [AES-GCM NIST Specification](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf)
-- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+- [Argon2 RFC 9106](https://datatracker.ietf.org/doc/html/rfc9106)
+- [HKDF RFC 5869](https://datatracker.ietf.org/doc/html/rfc5869)
