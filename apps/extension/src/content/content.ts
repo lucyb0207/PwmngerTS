@@ -41,31 +41,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// --- Shadow DOM Support ---
+function getAllInputs(root: Node = document): HTMLInputElement[] {
+  let inputs: HTMLInputElement[] = [];
+  
+  // Get inputs in the current root
+  if (root instanceof HTMLElement || root instanceof Document || root instanceof ShadowRoot) {
+    const found = (root as any).querySelectorAll('input');
+    if (found) inputs = Array.from(found);
+
+    // Recursively search shadow roots of all elements
+    const allElements = (root as any).querySelectorAll('*');
+    for (const el of Array.from(allElements) as HTMLElement[]) {
+      if (el.shadowRoot) {
+        inputs = [...inputs, ...getAllInputs(el.shadowRoot)];
+      }
+    }
+  }
+  
+  return inputs;
+}
+
 // --- Autofill Logic ---
 function autofillFields(user: string, pass: string) {
-  const passwordInputs = document.querySelectorAll('input[type="password"]');
+  const allInputs = getAllInputs();
+  const passwordInputs = allInputs.filter(input => input.type === "password");
 
   if (passwordInputs.length === 0) {
     console.log("No password fields found for auto-fill");
     return;
   }
 
-  for (const passInput of Array.from(passwordInputs) as HTMLInputElement[]) {
+  for (const passInput of passwordInputs) {
     // 1. Fill the password field
     setValue(passInput, pass);
 
     // 2. Try to find the username field associated with this password field
-    const userInput = findUsernameField(passInput);
+    const userInput = findUsernameField(passInput, allInputs);
     if (userInput) {
       setValue(userInput, user);
     }
   }
 }
 
-function findUsernameField(passInput: HTMLInputElement): HTMLInputElement | null {
+function findUsernameField(passInput: HTMLInputElement, allInputs: HTMLInputElement[]): HTMLInputElement | null {
   const form = passInput.form;
+  
+  // If in a form, look there first
   if (form) {
-    // Look for common username/email patterns in the same form
     const selectors = [
       'input[type="email"]',
       'input[name*="user"]',
@@ -74,7 +97,7 @@ function findUsernameField(passInput: HTMLInputElement): HTMLInputElement | null
       'input[id*="user"]',
       'input[id*="email"]',
       'input[autocomplete="username"]',
-      'input[type="text"]' // Fallback
+      'input[type="text"]'
     ];
     
     for (const selector of selectors) {
@@ -83,13 +106,15 @@ function findUsernameField(passInput: HTMLInputElement): HTMLInputElement | null
     }
   }
 
-  // If no form, look for nearest input before the password field
-  const allInputs = Array.from(document.querySelectorAll('input'));
+  // Fallback: look for nearest input before the password field globally (including shadow DOM)
   const passIndex = allInputs.indexOf(passInput);
   if (passIndex > 0) {
     for (let i = passIndex - 1; i >= 0; i--) {
-      const input = allInputs[i] as HTMLInputElement;
-      if ((input.type === 'text' || input.type === 'email') && input.style.display !== 'none') return input;
+      const input = allInputs[i];
+      if (input && (input.type === 'text' || input.type === 'email') && 
+          window.getComputedStyle(input).display !== 'none') {
+        return input;
+      }
     }
   }
 
@@ -106,7 +131,8 @@ function setValue(input: HTMLInputElement, value: string) {
 
 // --- Generator UI Injection ---
 function injectGeneratorIcons() {
-  const passwordInputs = document.querySelectorAll('input[type="password"]');
+  const allInputs = getAllInputs();
+  const passwordInputs = allInputs.filter(input => input.type === "password");
   
   passwordInputs.forEach((input: any) => {
     if (input.dataset.pwmngerInjected) return;
@@ -166,24 +192,36 @@ injectGeneratorIcons();
 
 
 // --- Credential Capture ---
-document.addEventListener('submit', (e) => {
-  const form = e.target as HTMLFormElement;
-  if (!form) return;
+function captureAndSend() {
+  const allInputs = getAllInputs();
+  const passwordInput = allInputs.find(input => input.type === 'password' && input.value);
+  
+  if (passwordInput) {
+    const usernameInput = findUsernameField(passwordInput, allInputs);
+    const username = usernameInput ? usernameInput.value : '';
+    const password = passwordInput.value;
+    const site = window.location.hostname;
 
-  const passwordInput = form.querySelector('input[type="password"]') as HTMLInputElement;
-  if (!passwordInput || !passwordInput.value) return;
-
-  const usernameInput = findUsernameField(passwordInput);
-  const username = usernameInput ? usernameInput.value : '';
-  const password = passwordInput.value;
-  const site = window.location.hostname;
-
-  if (password) {
     chrome.runtime.sendMessage({
       action: "capture-credentials",
       site,
       username,
       password
     });
+  }
+}
+
+document.addEventListener('submit', captureAndSend, true);
+
+// Fallback for form-less sites (detect click on anything that looks like a login button)
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  if (target && (
+    target.tagName === 'BUTTON' || 
+    target.getAttribute('role') === 'button' ||
+    (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'submit')
+  )) {
+    // Small delay to let the password field be filled if it's dynamic
+    setTimeout(captureAndSend, 100);
   }
 }, true);
