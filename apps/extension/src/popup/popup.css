@@ -315,6 +315,19 @@ li:hover .entry-actions {
   display: none !important;
 }
 
+.breach-alert {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
