@@ -35,8 +35,55 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
   sendResponse({ error: "Unauthorized access" });
 });
 
+let autoLockTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearAutoLock() {
+  if (autoLockTimer) {
+    clearTimeout(autoLockTimer);
+    autoLockTimer = null;
+  }
+}
+
+function startAutoLock(timeoutMs: number) {
+  clearAutoLock();
+  log(`Starting auto-lock timer: ${timeoutMs}ms`);
+  autoLockTimer = setTimeout(() => {
+    log("Auto-lock triggered");
+    // Notify any open popups to lock
+    chrome.runtime.sendMessage({ action: "lock-vault" }).catch(() => {});
+    
+    // Clear pending entry if any
+    if (pendingEntry) {
+      wipe(pendingEntry.password);
+      pendingEntry = null;
+      chrome.action.setBadgeText({ text: "" });
+    }
+    
+    autoLockTimer = null;
+  }, timeoutMs);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   try {
+    if (message.action === "start-auto-lock") {
+      startAutoLock(message.timeoutMs);
+      sendResponse({ success: true });
+    }
+
+    if (message.action === "reset-auto-lock") {
+      // If we have a timer, reset it (keep same duration)
+      // Usually the timeoutMs is stored or sent again
+      if (message.timeoutMs) {
+        startAutoLock(message.timeoutMs);
+      }
+      sendResponse({ success: true });
+    }
+
+    if (message.action === "stop-auto-lock") {
+      clearAutoLock();
+      sendResponse({ success: true });
+    }
+
     if (message.action === "capture-credentials") {
       log("Capturing credentials for:", message.site);
       
