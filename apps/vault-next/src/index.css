@@ -1,0 +1,132 @@
+:root {
+  /* Design Tokens (Supabase & Render Inspired) */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #020617;
+
+  --accent-green: #3ecf8e;
+  --accent-green-glow: rgba(62, 207, 142, 0.2);
+  --accent-purple: #722ed1;
+  --accent-blue: #1677ff;
+  --primary: var(--accent-green);
+  
+  --bg-deep: var(--slate-950);
+  --bg-sidebar: #050811;
+  --bg-card: #0f172a;
+  --border-subtle: var(--slate-800);
+  --border-bright: var(--slate-700);
+
+  --text-primary: var(--slate-50);
+  --text-muted: var(--slate-400);
+  --text-dim: var(--slate-500);
+
+  --radius-xl: 12px;
+  --radius-lg: 8px;
+  --radius-md: 6px;
+  
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --glass: rgba(15, 23, 42, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app-main {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+/* Premium Card System */
+.card-premium {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s var(--ease-in-out);
+}
+
+.card-premium:hover {
+  border-color: rgba(62, 207, 142, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Typography Utility */
+.text-gradient {
+  background: linear-gradient(135deg, #3ecf8e 0%, #1677ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Mesh Background Effect */
+.mesh-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background: 
+    radial-gradient(at 10% 10%, hsla(217, 100%, 10%, 0.5) 0px, transparent 50%),
+    radial-gradient(at 90% 10%, hsla(152, 100%, 10%, 0.3) 0px, transparent 50%),
+    radial-gradient(at 50% 90%, hsla(262, 100%, 10%, 0.3) 0px, transparent 50%);
+  filter: blur(40px);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--slate-700);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--slate-600);
+}
+
+/* Animation Utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s var(--ease-in-out) forwards;
+}
