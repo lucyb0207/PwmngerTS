@@ -1,10 +1,11 @@
 import {
   decryptData,
   encryptData,
-  deriveMasterKey,
+  deriveKeysFromPassword,
   generateVaultKey,
   wrapKey,
   unwrapKey,
+  migrateEncryptedPayload,
 } from "@pwmnger/crypto";
 import { createEmptyVault } from "@pwmnger/vault";
 import { StoredVault } from "@pwmnger/storage";
@@ -13,12 +14,12 @@ export async function createEncryptedVault(
   masterPassword: string,
 ): Promise<StoredVault> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const masterKey = await deriveMasterKey(masterPassword, salt);
+  const { encryptionKey } = await deriveKeysFromPassword(masterPassword, salt);
   const vaultKey = await generateVaultKey();
   const emptyVault = createEmptyVault();
-  
+
   const encryptedVault = await encryptData(vaultKey, emptyVault);
-  const encryptedVaultKey = await wrapKey(masterKey, vaultKey);
+  const encryptedVaultKey = await wrapKey(encryptionKey, vaultKey);
 
   return {
     salt: Array.from(salt),
@@ -34,9 +35,15 @@ export async function decryptVault(
 ): Promise<any> {
   try {
     const salt = new Uint8Array(vault.salt);
-    const masterKey = await deriveMasterKey(masterPassword, salt);
-    const vaultKey = await unwrapKey(masterKey, vault.encryptedVaultKey);
-    const decryptedVault = await decryptData<any>(vaultKey, vault.encryptedVault);
+    const { encryptionKey } = await deriveKeysFromPassword(masterPassword, salt);
+    const vaultKey = await unwrapKey(
+      encryptionKey,
+      migrateEncryptedPayload(vault.encryptedVaultKey),
+    );
+    const decryptedVault = await decryptData<any>(
+      vaultKey,
+      migrateEncryptedPayload(vault.encryptedVault),
+    );
     return decryptedVault;
   } catch (error) {
     console.error("Decryption failed:", error);
@@ -49,10 +56,10 @@ export async function encryptVault(
   masterPassword: string,
   salt: Uint8Array,
 ): Promise<StoredVault> {
-  const masterKey = await deriveMasterKey(masterPassword, salt);
-  const vaultKey = await generateVaultKey(); // Or re-use? For simplicity, we wrap a new one
+  const { encryptionKey } = await deriveKeysFromPassword(masterPassword, salt);
+  const vaultKey = await generateVaultKey();
   const encryptedVault = await encryptData(vaultKey, vault);
-  const encryptedVaultKey = await wrapKey(masterKey, vaultKey);
+  const encryptedVaultKey = await wrapKey(encryptionKey, vaultKey);
 
   return {
     salt: Array.from(salt),

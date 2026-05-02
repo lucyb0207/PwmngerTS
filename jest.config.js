@@ -9,8 +9,8 @@ module.exports = {
     "!packages/**/*.test.ts",
     "!packages/**/node_modules/**",
   ],
-  testPathIgnorePatterns: ["/node_modules/", "/apps/web/", "/apps/extension/", "/apps/mobile/"],
-  coveragePathIgnorePatterns: ["/node_modules/", "test.ts", "/apps/web/", "/apps/extension/", "/apps/mobile/"],
+  testPathIgnorePatterns: ["/node_modules/", "/apps/web/", "/apps/extension/"],
+  coveragePathIgnorePatterns: ["/node_modules/", "test.ts", "/apps/web/", "/apps/extension/"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   moduleNameMapper: {
     "^@pwmnger/crypto$": "<rootDir>/packages/crypto/src",

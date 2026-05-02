@@ -45,7 +45,7 @@
     "test:e2e:ui": "playwright test --ui",
     "build": "pnpm -r --if-present run build",
     "lint": "pnpm recursive run lint",
-    "postinstall": "pnpm --filter backend exec prisma generate",
+    "postinstall": "pnpm --filter backend exec prisma generate && pnpm --filter vault-next exec prisma generate",
     "typecheck": "pnpm -r --if-present run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
