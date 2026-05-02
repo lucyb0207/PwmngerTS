@@ -150,6 +150,16 @@
       <input type="text" id="siteInput" placeholder="Site (e.g. google.com)" />
       <input type="text" id="usernameInput" placeholder="Username" />
       <input type="password" id="passwordInput" placeholder="Password" />
+      
+      <div class="strength-meter">
+        <div id="addStrengthBar" class="strength-bar"></div>
+      </div>
+      <div id="addStrengthText" class="strength-text">None</div>
+
+      <div id="addBreachAlert" class="breach-alert" hidden>
+        ⚠️ This password has been found in a data breach!
+      </div>
+
       <select id="folderSelect">
         <option value="">No Folder</option>
       </select>
@@ -165,6 +175,16 @@
       <input type="text" id="editSiteInput" placeholder="Site" />
       <input type="text" id="editUsernameInput" placeholder="Username" />
       <input type="password" id="editPasswordInput" placeholder="Password" />
+
+      <div class="strength-meter">
+        <div id="editStrengthBar" class="strength-bar"></div>
+      </div>
+      <div id="editStrengthText" class="strength-text">None</div>
+
+      <div id="editBreachAlert" class="breach-alert" hidden>
+        ⚠️ This password has been found in a data breach!
+      </div>
+
       <select id="editFolderSelect">
         <option value="">No Folder</option>
       </select>

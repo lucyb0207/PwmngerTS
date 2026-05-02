@@ -8,6 +8,7 @@ import {
   loginAccount,
   registerAccount,
   syncVaultWithCloud,
+  lockVault,
   unlockVault,
   getVault,
   addVaultEntry,
@@ -20,6 +21,7 @@ import {
   unlockVaultWithRecoveryKey,
 } from "@pwmnger/app-logic";
 import { passwordStrength } from "../password/strength";
+import { checkPasswordBreach } from "../password/breach";
 
 // Initialize API URL for app-logic package
 (globalThis as any).PW_API_URL = "http://localhost:4000";
@@ -27,7 +29,10 @@ import { passwordStrength } from "../password/strength";
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", async () => {
     try {
-      console.log("PwmngerTS: Popup initializing...");
+      const log = (message: string, ...args: any[]) => {
+        console.log(`[PwmngerTS:Popup] ${message}`, ...args);
+      };
+      log("Initializing...");
     const unlockBtn = document.getElementById("unlockBtn");
     const masterInput = document.getElementById(
       "masterPassword",
@@ -116,6 +121,13 @@ if (typeof document !== "undefined") {
     const downloadKitBtn = document.getElementById("downloadKitBtn");
     const closeSettingsBtn = document.getElementById("closeSettingsBtn");
 
+    const addStrengthBar = document.getElementById("addStrengthBar");
+    const addStrengthText = document.getElementById("addStrengthText");
+    const editStrengthBar = document.getElementById("editStrengthBar");
+    const editStrengthText = document.getElementById("editStrengthText");
+    const addBreachAlert = document.getElementById("addBreachAlert");
+    const editBreachAlert = document.getElementById("editBreachAlert");
+
     if (
       !unlockBtn ||
       !masterInput ||
@@ -181,7 +193,7 @@ if (typeof document !== "undefined") {
               password: pending.password,
             } as any);
             const token = await loadAuthToken();
-            if (token) await syncVaultWithCloud(token);
+            await syncVaultWithCloud();
             updateView();
             capturePrompt.hidden = true;
           } catch (e) {
@@ -213,7 +225,12 @@ if (typeof document !== "undefined") {
       await chrome.storage.local.set({ autoLockTimeout: timeoutMinutes });
       
       if (timeoutMinutes > 0) {
-        startAutoLock(timeoutMinutes * 60 * 1000);
+        chrome.runtime.sendMessage({ 
+          action: "start-auto-lock", 
+          timeoutMs: timeoutMinutes * 60 * 1000 
+        }).catch(() => {});
+      } else {
+        chrome.runtime.sendMessage({ action: "stop-auto-lock" }).catch(() => {});
       }
       
       settingsView.hidden = true;
@@ -242,9 +259,38 @@ if (typeof document !== "undefined") {
     const initAutoLock = async () => {
       const { autoLockTimeout } = await chrome.storage.local.get("autoLockTimeout");
       if (autoLockTimeout && autoLockTimeout > 0) {
-        startAutoLock(autoLockTimeout * 60 * 1000);
+        chrome.runtime.sendMessage({ 
+          action: "start-auto-lock", 
+          timeoutMs: autoLockTimeout * 60 * 1000 
+        }).catch(() => {});
       }
     };
+
+    // Global reset on any click in the popup
+    document.addEventListener("click", async () => {
+      const { autoLockTimeout } = await chrome.storage.local.get("autoLockTimeout");
+      if (autoLockTimeout && autoLockTimeout > 0) {
+        chrome.runtime.sendMessage({ 
+          action: "reset-auto-lock", 
+          timeoutMs: autoLockTimeout * 60 * 1000 
+        }).catch(() => {});
+      }
+    });
+
+    // Listen for background auto-lock
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message.action === "lock-vault") {
+        lockVault(); // From appLogic
+        vaultDiv.hidden = true;
+        addEntryForm.hidden = true;
+        editEntryForm.hidden = true;
+        settingsView.hidden = true;
+        lockedDiv.hidden = false;
+        masterInput.value = "";
+        masterInput.focus();
+        log("Vault auto-locked by background");
+      }
+    });
 
     // Password strength colors
     const getStrengthInfo = (password: string) => {
@@ -258,17 +304,55 @@ if (typeof document !== "undefined") {
       return { width: "100%", color: "#1890ff", label: "Very Strong" };
     };
 
+    const updateStrengthUI = async (password: string, bar: HTMLElement | null, text: HTMLElement | null, alertEl?: HTMLElement | null) => {
+      const info = getStrengthInfo(password);
+      if (bar) {
+        bar.style.width = info.width;
+        bar.style.backgroundColor = info.color;
+      }
+      if (text) {
+        text.innerText = info.label;
+        text.style.color = info.color;
+      }
+
+      if (alertEl) {
+        if (!password) {
+          alertEl.hidden = true;
+          return;
+        }
+        // Basic debounce mechanism could be added here if needed
+        const breachCount = await checkPasswordBreach(password);
+        if (breachCount > 0) {
+          alertEl.hidden = false;
+        } else {
+          alertEl.hidden = true;
+        }
+      }
+    };
+
+    let regTimeout: NodeJS.Timeout;
     regPasswordInput.addEventListener("input", () => {
-      const info = getStrengthInfo(regPasswordInput.value);
-      if (strengthBar) {
-        strengthBar.style.width = info.width;
-        strengthBar.style.backgroundColor = info.color;
-      }
-      if (strengthText) {
-        strengthText.innerText = info.label;
-        strengthText.style.color = info.color;
-      }
-      createVaultBtn.disabled = regPasswordInput.value.length < 8;
+      clearTimeout(regTimeout);
+      regTimeout = setTimeout(() => {
+        updateStrengthUI(regPasswordInput.value, strengthBar, strengthText);
+        createVaultBtn.disabled = regPasswordInput.value.length < 8;
+      }, 300);
+    });
+
+    let addTimeout: NodeJS.Timeout;
+    passwordInput.addEventListener("input", () => {
+      clearTimeout(addTimeout);
+      addTimeout = setTimeout(() => {
+        updateStrengthUI(passwordInput.value, addStrengthBar, addStrengthText, addBreachAlert);
+      }, 300);
+    });
+
+    let editTimeout: NodeJS.Timeout;
+    editPasswordInput.addEventListener("input", () => {
+      clearTimeout(editTimeout);
+      editTimeout = setTimeout(() => {
+        updateStrengthUI(editPasswordInput.value, editStrengthBar, editStrengthText, editBreachAlert);
+      }, 300);
     });
 
     // Generator logic
@@ -321,16 +405,15 @@ if (typeof document !== "undefined") {
         createVaultBtn.disabled = true;
         createVaultBtn.innerText = "Creating...";
 
-        await registerAccount(email, password); // Zero-Knowledge Reg
-        await createNewVault(password);
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        await registerAccount(email, password, salt);
+        await createNewVault(password, salt);
 
-        // Auto-login to get token
-        const token = await loginAccount(email, password);
-        await saveAuthToken(token);
+        await loginAccount(email, password, undefined, salt);
         
         // Unlock locally in appLogic before sync
         await unlockVault(password);
-        await syncVaultWithCloud(token);
+        await syncVaultWithCloud();
 
         updateView();
         registerDiv.hidden = true;
@@ -353,14 +436,12 @@ if (typeof document !== "undefined") {
 
       try {
         loginBtn.innerText = "Syncing...";
-        const authToken = await loginAccount(email, password, token2fa);
-        await saveAuthToken(authToken);
+        await loginAccount(email, password, token2fa);
 
         // If login successful, hide 2FA just in case
         login2FASection?.setAttribute("hidden", "");
 
-        // Sync (Pull latest blob from cloud and save to local storage)
-        await syncVaultWithCloud(authToken);
+        await syncVaultWithCloud();
 
         // Now unlock locally in appLogic library to synchronize state
         await unlockVault(password);
@@ -389,7 +470,7 @@ if (typeof document !== "undefined") {
         const token = await loadAuthToken();
         if (!token) throw new Error("Please log in again to sync.");
 
-        await syncVaultWithCloud(token);
+        await syncVaultWithCloud();
         updateView();
         alert("Sync Success!");
       } catch (e: any) {
@@ -483,6 +564,7 @@ if (typeof document !== "undefined") {
       if (tab?.url) {
         siteInput.value = new URL(tab.url).hostname;
       }
+      updateStrengthUI("", addStrengthBar, addStrengthText);
     });
 
     cancelAddBtn.addEventListener("click", () => {
@@ -509,7 +591,7 @@ if (typeof document !== "undefined") {
         const token = await loadAuthToken();
         if (token) {
           try {
-            await syncVaultWithCloud(token);
+            await syncVaultWithCloud();
           } catch (syncErr) {
             console.warn("Auto-sync failed, but entry saved locally", syncErr);
           }
@@ -550,7 +632,7 @@ if (typeof document !== "undefined") {
 
         // Auto-sync
         const token = await loadAuthToken();
-        if (token) await syncVaultWithCloud(token);
+        if (token) await syncVaultWithCloud();
 
         updateView();
         editEntryForm.hidden = true;
@@ -578,7 +660,7 @@ if (typeof document !== "undefined") {
 
         // Auto-sync
         const token = await loadAuthToken();
-        if (token) await syncVaultWithCloud(token);
+        if (token) await syncVaultWithCloud();
 
         updateView();
         editEntryForm.hidden = true;
@@ -679,10 +761,10 @@ if (typeof document !== "undefined") {
             editFolderSelect.value = entry.folderId || "";
           }
 
-          editEntryIdInput!.value = entry.id;
           editSiteInput!.value = entry.site;
           editUsernameInput!.value = entry.username;
           editPasswordInput!.value = entry.password;
+          updateStrengthUI(entry.password, editStrengthBar, editStrengthText);
         });
 
         container.appendChild(li);
